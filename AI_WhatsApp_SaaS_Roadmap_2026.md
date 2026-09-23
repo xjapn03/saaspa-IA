@@ -3,7 +3,7 @@
 > **Versión 4.** Alineada con la realidad del producto **Kamerinos SPA Bogotá**, ya
 > desplegado en `saaspa-backend` (NestJS) + `saaspa-frontend` (Next.js). Este repo
 > (`saaspa-IA`) es el **servicio de IA separado** en Java/Spring AI que se integra a ese
-> producto. La v3 (multi-tenant, todo en Spring) queda descartada.
+> producto. La v3 (multi-tenant, todo en Spring) queda descartada; la tenancy se retoma como multi-tenant híbrido (ver §6.6).
 
 ---
 
@@ -18,8 +18,8 @@ Añadir un **agente conversacional con IA** al producto Kamerinos SPA ya existen
 No se construye un producto nuevo: se integra IA a un sistema que ya gestiona catálogo, agenda,
 pagos (Wompi), e-commerce, Google Calendar y Meta CAPI.
 
-**Fuera de alcance:** entrenar/fine-tunear modelos, LLMs locales, multi-tenant (por ahora),
-colegar pagos desde el bot (usa enlaces a la web) y staff/profesional (diferido).
+**Fuera de alcance:** entrenar/fine-tunear modelos, LLMs locales, cobrar pagos desde el bot
+(usa enlaces a la web) y staff/profesional (diferido).
 
 ---
 
@@ -28,7 +28,7 @@ colegar pagos desde el bot (usa enlaces a la web) y staff/profesional (diferido)
 | Tema | v3 | v4 | Motivo |
 |---|---|---|---|
 | Stack | Java/Spring para todo | Java/Spring AI solo para la IA; backend NestJS | El producto ya existe en NestJS |
-| Tenancy | Multi-tenant | Single-tenant (Kamerinos) | El piloto es un salón |
+| Tenancy | Multi-tenant (todo en Spring) | Multi-tenant híbrido (aislamiento RAG + BD) | Escalar a otras empresas |
 | Alcance | Construir todo | Integrar IA a lo existente | Fases 1-4 ya están en producción |
 | Pagos/pedidos | "No hay en el piloto" / "registrar pedido" | Ya existen (Wompi + e-commerce) | El bot genera deep-links |
 | WhatsApp | Fase 6 | Webhook + menú ya existen | Reemplazar el recepcionista por IA |
@@ -134,6 +134,26 @@ un horario está libre es `saaspa-backend` (Redis slot-locking + transacción, y
 Alergias, embarazo, condiciones de piel, medicación, reacciones, reclamos o cobros disputados
 → **derivar a una persona**. El bot da información general de servicios, nunca consejo médico.
 
+### 6.6 Multi-tenancy híbrida (aislamiento de RAG y base de datos)
+
+El producto debe poder alojar otras empresas (salones, clínicas) en el futuro. Estrategia:
+
+- **Modelo base:** *shared-schema* con `tenant_id` (FK not-null) en toda tabla del agente y de negocio.
+- **RAG aislado:** cada chunk/vector lleva `tenant_id`; la recuperación **siempre** filtra por el tenant resuelto.
+- **Base de datos aislada:** capa central de resolución de tenant; repositorios scoped; tests de aislamiento.
+- **Híbrido (escalado):** opción de *schema-per-tenant* o *database-per-tenant* para clientes grandes o con cumplimiento.
+
+Resolución de tenant:
+
+| Canal | Cómo se resuelve |
+|---|---|
+| WhatsApp | `phone_number_id` (cada negocio tiene su número) |
+| Chat web (anónimo/logueado) | subdominio (o `site`) |
+| Chat dashboard | `tenant_id` del usuario autenticado (JWT) |
+
+La capa IA (`saaspa-IA`) es multi-tenant desde el día 1; el backend (`saaspa-backend`) migra
+incrementalmente (track de fases, sin bloquear el piloto).
+
 ---
 
 ## 7. Agente CLIENTAS — herramientas
@@ -179,7 +199,7 @@ Regla de exactitud: las cifras las calcula el código; la respuesta muestra per�
 ```text
 POST {IA_BOT_URL}/api/v1/chat
 {
-  conversationId, channel: "whatsapp"|"web"|"dashboard",
+  tenantId, conversationId, channel: "whatsapp"|"web"|"dashboard",
   agent: "customer"|"admin",
   identity: { type: "anonymous"|"user", userId?, waId?, phone?, role? },
   message: { text }
@@ -197,22 +217,28 @@ red interna (no expuesto en Nginx). Endpoints:
 - `GET /api/internal/bookings?phone=...`
 - `GET /api/internal/reports/{sales,top-services,top-products,appointments,low-stock}`
 
+Todos los endpoints internos están scoped por `tenant_id` (resuelto en NestJS).
+
 ---
 
 ## 10. Modelo de datos (adiciones al schema existente)
 
 Se **reutilizan** `User`, `Service`, `Product`, `Booking`, `Payment`, `Order`, `Coupon` y
-`AuditLog` (ya existentes). Se añaden:
+`AuditLog` (ya existentes), a los que se añade `tenant_id` en la migración incremental del backend.
+Se añaden (todas con `tenant_id`):
 
 ```text
-conversations(id, channel, user_id?, wa_id?, agent_type, status, handoff_reason, created_at)
-messages(id, conversation_id, role, content, tokens_in, tokens_out, model, cost_estimate, latency_ms, created_at)
-tool_calls(id, message_id, tool_name, args_json, result_json, latency_ms, status)
-documents(id, title, type, version, created_at)           // + tabla vector (pgvector)
-unsupported_questions(id, agent_type, question, created_at)
+tenants(id, name, slug, timezone, currency, plan, limits_json, active, created_at)
+conversations(id, tenant_id, channel, user_id?, wa_id?, agent_type, status, handoff_reason, created_at)
+messages(id, tenant_id, conversation_id, role, content, tokens_in, tokens_out, model, cost_estimate, latency_ms, created_at)
+tool_calls(id, tenant_id, message_id, tool_name, args_json, result_json, latency_ms, status)
+documents(id, tenant_id, title, type, version, created_at)   // + tabla vector (pgvector, metadata tenant_id)
+unsupported_questions(id, tenant_id, agent_type, question, created_at)
+usage_counters(tenant_id, period, messages, tokens_in, tokens_out, cost_estimate)
 ```
 
 `ConversationState` (existente, por `waId`) se generaliza a `conversations`/`messages`.
+El filtro por `tenant_id` es obligatorio en toda query y en toda recuperación RAG.
 
 ---
 
@@ -245,6 +271,7 @@ Dataset en `eval/` + LLM-as-a-Judge en CI. Casos específicos:
 ### Fase 0 — Alinear y contratos (1 semana)
 - Reescribir README/roadmap (este estado) y ADRs.
 - Definir contratos 9.1/9.2, `INTERNAL_API_KEY`, modelo `conversations`/`messages`.
+- Definir la estrategia de tenancy (multi-tenant híbrido) y el transporte de `tenant_id` en los contratos.
 - **Entregable:** documentación coherente + contratos firmados en `docs/adr/`.
 
 ### Fase 1 — Cerebro mínimo + chat web
@@ -274,9 +301,13 @@ Dataset en `eval/` + LLM-as-a-Judge en CI. Casos específicos:
 - Handoff a humano. Retención/privacidad (aviso de asistente automatizado).
 - **Entregable:** proyecto presentable + métricas reales del piloto.
 
+### Track transversal — Multi-tenancy del backend
+- Añadir `Tenant` + `tenant_id` a las tablas de negocio y migrar los datos de Kamerinos al tenant `kamerinos`.
+- Scoping de repositorios por tenant + tests de aislamiento. Se ejecuta en paralelo a las fases 1-4.
+
 ### Después del piloto
 - Staff/profesional y horarios. Recordatorios con plantillas. Resumen diario.
-- Multi-tenant y nuevas verticales. Pagos desde el bot si el salón lo pide.
+- Nuevas verticales (clínicas, barberías, consultorios). Pagos desde el bot si el salón lo pide.
 
 ---
 
@@ -320,12 +351,14 @@ política de retención y aviso de asistente automatizado.
 | Acoplamiento NestJS↔Java | Timeouts + degradación con gracia + contratos versionados |
 | Costos descontrolados | Límites por conversación y tope mensual |
 | Datos personales | Minimizar lo enviado al LLM + retención limitada + consentimiento |
+| Fuga de datos entre tenants | `tenant_id` obligatorio + capa central de scoping + tests de aislamiento |
 
 ---
 
 ## 17. Checklist "se ve profesional"
 
 - [ ] Dos agentes con herramientas y permisos separados
+- [ ] Aislamiento multi-tenant verificado con tests (sin fuga entre tenants)
 - [ ] Agenda sin dobles reservas (test de concurrencia end-to-end)
 - [ ] Reportes exactos con herramientas predefinidas y auditoría
 - [ ] Evaluación automática en CI
