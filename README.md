@@ -40,7 +40,7 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 - **La IA conversa; el código decide.** Este servicio orquesta; `saaspa-backend` calcula y valida.
 - **Precios, horarios y stock no van en RAG**: van en tablas y se consultan con herramientas.
 - **Cada agente tiene solo sus herramientas** (el de clientas no accede a reportes).
-- **Single-tenant en el piloto** (Kamerinos). Multi-tenancy queda para después.
+- **Multi-tenant híbrido** con aislamiento de RAG y base de datos (`tenant_id` en todo dato del agente).
 - **Evaluación automática en CI y control de costos**.
 
 ## Canales e identidad
@@ -92,7 +92,7 @@ Cada decisión relevante está documentada en `docs/adr/`. Resumen:
 
 - **Java/Spring AI como servicio separado** (cerebro), no dentro de NestJS.
 - **NestJS como gateway de canales y ejecutor de herramientas** (dueño de auth, roles y lógica).
-- **Single-tenant en el piloto.**
+- **Multi-tenant híbrido** (aislamiento de RAG y base de datos).
 - **Herramientas vía API HTTP interno** autenticado, no consultas directas a la BD desde Java.
 - **Resolución de identidad del cliente por teléfono** (`waId`/teléfono → `User`).
 
