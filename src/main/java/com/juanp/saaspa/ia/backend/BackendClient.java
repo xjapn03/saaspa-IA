@@ -25,8 +25,8 @@ import org.springframework.web.util.UriBuilder;
  * </ul>
  *
  * <p>El {@code path} debe venir ya construido y sin PII en la query (el path se usa en mensajes de
- * error y logs): codifica los segmentos variables con
- * {@code UriUtils.encodePathSegment(valor, StandardCharsets.UTF_8)}.
+ * error y logs). Para rutas con segmentos variables usa la sobrecarga con plantilla
+ * ({@code /services/{servicio}}): el cliente expande y codifica los valores.
  */
 public class BackendClient {
 
@@ -52,7 +52,7 @@ public class BackendClient {
 	/**
 	 * GET con parametros de consulta opcionales.
 	 *
-	 * @param path ruta relativa a la URL base (sin query)
+	 * @param path ruta relativa a la URL base, sin variables ni caracteres por codificar
 	 * @param queryParams parametros de consulta; los valores {@code null} se omiten
 	 * @param turnToken turn token que se reenvia; puede ser {@code null} si no hay identidad
 	 * @param responseType tipo esperado de la respuesta
@@ -60,9 +60,29 @@ public class BackendClient {
 	 * @throws BackendUnavailableException si no hay respuesta (timeout, conexion rechazada)
 	 */
 	public <T> T get(String path, Map<String, ?> queryParams, String turnToken, Class<T> responseType) {
+		return get(path, Map.of(), queryParams, turnToken, responseType);
+	}
+
+	/**
+	 * GET con variables de ruta y parametros de consulta.
+	 *
+	 * <p>El {@code pathTemplate} admite variables tipo {@code /services/{servicio}}; este cliente las
+	 * expande y las codifica, asi que <strong>no</strong> hay que codificarlas antes (codificar a mano
+	 * produciria doble codificacion).
+	 *
+	 * @param pathTemplate ruta relativa a la URL base, con variables entre llaves si las hay
+	 * @param uriVariables valores de las variables de la plantilla
+	 * @param queryParams parametros de consulta; los valores {@code null} se omiten
+	 * @param turnToken turn token que se reenvia; puede ser {@code null} si no hay identidad
+	 * @param responseType tipo esperado de la respuesta
+	 * @throws BackendException si el backend responde con error o con un cuerpo vacio
+	 * @throws BackendUnavailableException si no hay respuesta (timeout, conexion rechazada)
+	 */
+	public <T> T get(String pathTemplate, Map<String, ?> uriVariables, Map<String, ?> queryParams, String turnToken,
+			Class<T> responseType) {
 		try {
 			T body = this.restClient.get()
-					.uri(uriBuilder -> buildUri(uriBuilder, path, queryParams))
+					.uri(uriBuilder -> buildUri(uriBuilder, pathTemplate, uriVariables, queryParams))
 					.headers(headers -> {
 						if (StringUtils.hasText(turnToken)) {
 							headers.setBearerAuth(turnToken);
@@ -71,31 +91,32 @@ public class BackendClient {
 					.retrieve()
 					.body(responseType);
 			if (body == null) {
-				throw BackendException.emptyBody(path);
+				throw BackendException.emptyBody(pathTemplate);
 			}
 			return body;
 		}
 		catch (RestClientResponseException ex) {
-			log.debug("Backend {} respondio HTTP {}", path, ex.getStatusCode().value());
-			throw BackendException.fromStatus(ex.getStatusCode().value(), path, ex.getResponseBodyAsString());
+			log.debug("Backend {} respondio HTTP {}", pathTemplate, ex.getStatusCode().value());
+			throw BackendException.fromStatus(ex.getStatusCode().value(), pathTemplate, ex.getResponseBodyAsString());
 		}
 		catch (ResourceAccessException ex) {
-			log.warn("Backend {} sin respuesta: {}", path, ex.getClass().getSimpleName());
-			throw new BackendUnavailableException(path, ex);
+			log.warn("Backend {} sin respuesta: {}", pathTemplate, ex.getClass().getSimpleName());
+			throw new BackendUnavailableException(pathTemplate, ex);
 		}
 		catch (RestClientException ex) {
-			log.warn("Backend {} fallo inesperado: {}", path, ex.getClass().getSimpleName());
-			throw BackendException.unexpected(path, ex.getMessage(), ex);
+			log.warn("Backend {} fallo inesperado: {}", pathTemplate, ex.getClass().getSimpleName());
+			throw BackendException.unexpected(pathTemplate, ex.getMessage(), ex);
 		}
 	}
 
-	private static URI buildUri(UriBuilder uriBuilder, String path, Map<String, ?> queryParams) {
-		UriBuilder builder = uriBuilder.path(path);
+	private static URI buildUri(UriBuilder uriBuilder, String pathTemplate, Map<String, ?> uriVariables,
+			Map<String, ?> queryParams) {
+		UriBuilder builder = uriBuilder.path(pathTemplate);
 		queryParams.forEach((name, value) -> {
 			if (value != null) {
 				builder.queryParam(name, value);
 			}
 		});
-		return builder.build();
+		return builder.build(uriVariables);
 	}
 }
