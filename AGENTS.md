@@ -201,7 +201,9 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
   usar `ToolCallbacks.from(bean)` y el contrato HTTP con WireMock. El id de conversación de la memoria se
   pasa por turno con el parámetro `ChatMemory.CONVERSATION_ID`; declarar un `ChatMemory` propio
   (`MessageWindowChatMemory`) fija la ventana sin depender de los valores por defecto de la
-  autoconfiguración.
+  autoconfiguración. Para auditar cada herramienta, envolver la `ToolCallback` en un decorador y
+  registrarlas con `defaultToolCallbacks(...)` (el resultado JSON trae el campo `ok` que indica si la
+  herramienta respondió).
 
 ---
 
@@ -639,7 +641,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Cliente HTTP hacia NestJS con timeouts (`RestClient`, clave de servicio, turn token reenviado, mapeo de errores; probado con WireMock — T1.2, 2026-09-24)
 - [x] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (`@Tool` en español, precios en COP preformateados, `ok=false` sin excepción — T1.3, 2026-09-24)
 - [ ] Handoff y política de temas sensibles
-- [ ] Registro de mensajes, tool calls y tokens en `ia`
+- [x] Registro de mensajes, tool calls y tokens en `ia` (`ia.turn_log` con tenant/conversación/canal/agente/prompt/modelo/tokens/latencia, `ia.tool_call_log` con estado y JSON acotado, memoria JDBC para los mensajes; fallos de escritura no tumban el turno — T1.6, 2026-09-24)
 - [ ] Dataset `eval/customer-agent.v1.jsonl` y runner
 - [ ] Tests: unitarios, contrato (WireMock), Testcontainers Postgres
 - [ ] **(bloqueado) Criterio de aceptación E2E de la Fase 1:** chat web anónimo que devuelve el precio real desde
@@ -702,6 +704,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-24 — feature/f1-read-tools — T1.3: herramientas de lectura del agente CLIENTAS (`listarServicios`, `consultarServicio`, `consultarDisponibilidad`) con `@Tool` en español, DTO de cable mínimos, precios formateados en COP, validación de fechas en la zona horaria del tenant (R13) y fallos como `ok=false` sin excepción (R11); `BackendClient` gana la sobrecarga con plantilla de ruta (evita la doble codificación); 10 tests nuevos con WireMock — verify verde (42 tests).
 - 2026-09-24 — feature/f1-customer-agent — T1.5: agente CLIENTAS (`CustomerAgent` + `CustomerAgentConfig`) con prompt v1 en es-CO versionado (`prompts/customer-agent.v1.md`) al que se inyectan negocio, fecha de hoy y zona horaria (R13), herramientas de solo lectura por defecto, memoria con ventana configurable (`saaspa.agent.memory-window`) e id namespaced `{tenantId}:{channel}:{conversationId}` (D-MEM), y respuesta con modelo y tokens para el registro del turno; 7 tests nuevos con `ChatModel` doble (R14) — verify verde (49 tests).
 - 2026-09-24 — feature/f1-chat-endpoint — T1.4: `POST /api/v1/chat` (`ChatController`, DTOs validados, `TurnContextValidator` que contrasta cuerpo y turn token según R1, enrutado al agente y respuesta del contrato) + errores con `ProblemDetail` (400 validación/contexto, 501 agente no implementado, 502 backend no disponible, 401/500 defensivos) y contrato chat-api v0.3.0; 7 tests nuevos con MockMvc y agente doble — verify verde (56 tests).
+- 2026-09-24 — feature/f1-turn-logging — T1.6: registro durable en el esquema `ia` (`TurnLogService` → `turn_log` con tenant/conversación/canal/agente/prompt/modelo/tokens/latencia desde el controlador, `ToolCallLogger` → `tool_call_log` con estado, latencia y JSON acotado a 4000 caracteres, y `LoggingToolCallback` que envuelve las herramientas del `ChatClient` sin tocarlas); los fallos de escritura no tumbar el turno; 11 tests nuevos (auditoría con dobles + PostgreSQL real con Testcontainers, aislamiento por tenant y JSON grande) — verify verde (67 tests).
 
 ---
 
