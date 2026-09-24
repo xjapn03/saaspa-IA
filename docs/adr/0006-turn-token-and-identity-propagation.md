@@ -26,6 +26,19 @@ NestJS firma con la **clave privada**; este servicio **solo verifica con la clav
 **Alternativa descartada:** `INTERNAL_API_KEY` + headers de identidad. Permitiría suplantación si
 este servicio se compromete.
 
+## Addendum — implementación en T1.1 (2026-09-24)
+
+- Las claves públicas se configuran en **dos ranuras** (`TURN_TOKEN_KEY_CURRENT_PUBLIC_KEY` /
+  `TURN_TOKEN_KEY_PREVIOUS_PUBLIC_KEY`, cada una con su `kid`) para poder **rotar sin cortar** el
+  servicio: NestJS firma con una y este servicio acepta ambas hasta que la anterior se retira.
+- El material de cada clave se entrega en **base64** (una linea, apto para variables de entorno) o
+  como PEM en crudo; el `kid` del JWT selecciona la clave.
+- Verificación con el resource server de Spring Security (`NimbusJwtDecoder.withJwkSource(...)` +
+  `jwsAlgorithm(ES256)`, porque `withPublicKey(...)` solo admite RSA) y validación de caducidad y
+  audiencia (`TURN_TOKEN_AUDIENCE`, por defecto `saaspa-ia`); `TURN_TOKEN_ISSUER` es opcional.
+- La clave de servicio de entrada se compara en **tiempo constante** y, si no está configurada, se
+  rechaza toda petición (fallo cerrado).
+
 ## Consecuencias
 
 - **Positivas:** identidad verificable e infalsificable por el modelo; expiración corta limita el
