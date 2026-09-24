@@ -99,7 +99,8 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 | 0004 | Herramientas vía API HTTP interno de NestJS, nunca a la BD directamente |
 | 0005 | Identidad del cliente por teléfono (`waId` → `User`), con auto-creación política a definir |
 
-**Pendientes de escribir en la Fase 0** (propuestas, deben quedar como ADR antes de programar la Fase 1):
+**Escritas en la Fase 0** (2026-09-23) — ver `docs/adr/0006-turn-token-and-identity-propagation.md`,
+`0007-memory-and-persistence.md` y `0008-write-tools-policy.md`:
 
 | ADR | Tema | Propuesta |
 |---|---|---|
@@ -107,7 +108,7 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 | 0007 | Memoria y persistencia del agente | Ver [decisión D-MEM](#decisiones-abiertas). Esquema propio `ia` en PostgreSQL. Log durable de mensajes, tool calls y uso. |
 | 0008 | Política de herramientas de escritura | Solo lectura primero; escritura tras feature flag; confirmación explícita de la clienta; **idempotencia** (`Idempotency-Key`); auditoría de cada tool call. |
 
-**Correcciones pendientes a ADRs existentes:**
+**Correcciones aplicadas en la Fase 0** (2026-09-23):
 - ADR 0003: eliminar la línea "Sustituye a ADR 0003 (single-tenant) — descartado antes de su publicación" (confunde).
 - ADR 0005: añadir addendum: la identidad por teléfono **solo aplica a WhatsApp** (el número lo verifica Meta).
   En el **chat web anónimo nunca** se resuelve identidad por un teléfono que la persona teclea. La auto-creación de
@@ -165,7 +166,7 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 | Build | Maven (`./mvnw`) | `pom.xml` en la raíz del repo |
 | BD propia | PostgreSQL (esquema `ia`) + Flyway | pgvector desde la Fase 4 |
 | Redis | Redis estándar para idempotencia, rate limiting y caché | **No** es Redis Stack (ver trampas) |
-| LLM | Proveedor externo detrás de `ChatClient`. Inicial: **DeepSeek** (pendiente de confirmar) | Intercambiable por configuración |
+| LLM | **DeepSeek** (`deepseek-flash`) detrás de `ChatClient` | Soporta tool calling (verificado). Intercambiable por configuración |
 | Testing | JUnit (Boot 4), Testcontainers, WireMock, dataset `eval/` | Boot 4 usa Jackson 3 y JUnit 6 según sus guías de migración: verificar imports |
 | CI | GitHub Actions: `./mvnw -B verify` | |
 
@@ -182,23 +183,40 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 
 ---
 
-## 7. Estado actual del repo (snapshot al 2026-09-23)
+## 7. Estado del repo
 
-Proyecto generado con Spring Initializr. Hallazgos a corregir en la Fase 0:
+### Fase 0 — completada (2026-09-23)
 
-- `pom.xml`: `groupId=com.juanp`, `artifactId=ai-agent-platform`, `name`/`description` vacíos y bloques vacíos
-  (`licenses`, `developers`, `scm`). **Propuesta:** `groupId=com.kamerinos`, `artifactId=saaspa-ia`,
-  paquete base `com.kamerinos.ia`.
-- **Falta un starter de modelo de chat** (sin él no existe `ChatClient.Builder` autoconfigurado).
-- Solo está el driver `postgresql`; **faltan** `spring-boot-starter-jdbc` y Flyway (sin ellos no hay DataSource ni migraciones).
-- Memoria en Redis vía `spring-ai-starter-model-chat-memory-repository-redis`: exige Redis Stack. Ver D-MEM.
-- Faltan dependencias de test para contratos HTTP (WireMock).
-- Existe `HELP.md` de Initializr (borrar). `README.md` menciona una carpeta `backend/` que **no existe**
-  (el `pom.xml` está en la raíz): actualizar README.
-- `AI_WHATSAPP_SaaS_Roadmap_2026.md` (v3) está **parcialmente obsoleto**: asigna a este servicio módulos de
-  catálogo, agenda, ventas y reportes que, según las ADRs 0002 y 0004, viven en `saaspa-backend`.
-  Marcar como superado o reescribir para alinearlo con este archivo.
-- No hay CI, ni `docker-compose.yml`, ni `.env.example`, ni contratos OpenAPI.
+Resuelto respecto del snapshot inicial de Initializr:
+
+- `pom.xml`: `groupId=com.juanp`, `artifactId=saaspa-ia`, `name`/`description` con valor y sin bloques
+  vacíos; añadidos `spring-ai-starter-model-deepseek`, `spring-boot-starter-jdbc`,
+  `spring-boot-starter-flyway` + `flyway-database-postgresql`, WireMock 3.13.2 y
+  `spring-ai-starter-model-chat-memory-repository-jdbc` (se retiró el de Redis).
+- Paquete base `com.juanp.saaspa.ia`; clase `SaaspaIaApplication`; `HELP.md` eliminado.
+- `application.yml` (+ perfil `local`), `.env.example` y `.gitignore` (ya ignora `.env`).
+- `docker-compose.yml` de desarrollo (`pgvector/pgvector:pg15` + `redis:7-alpine`).
+- Flyway `V1__init_ia_schema.sql` (esquema `ia`: memoria JDBC, `turn_log`, `tool_call_log`).
+- ADRs 0006, 0007 y 0008 escritas; 0003 y 0005 corregidas.
+- Contratos `docs/contracts/*.openapi.yaml`; CI `.github/workflows/verify.yml`.
+- README y roadmap alineados con este archivo.
+
+### Discrepancias verificadas durante la Fase 0
+
+- El esquema que trae Spring AI para la memoria usa `conversation_id VARCHAR(36)`; nuestro
+  `conversationId` va namespaced (`{tenantId}:{channel}:{conversationId}`) → se amplió a
+  `VARCHAR(255)` en la migración (Flyway es la fuente; `initialize-schema: never`).
+- El `pom` de Initializr declaraba **dos** beans `@ServiceConnection(name="redis")` en
+  `TestcontainersConfiguration` (redis y redis-stack) → ambigüedad; se dejó solo Redis estándar.
+- El `.gitignore` de Initializr **no** ignoraba `.env` (violaba R7) → corregido.
+- `spring-boot-starter-flyway` de Boot 4.1 **no** incluye el módulo de PostgreSQL: hay que añadir
+  `flyway-database-postgresql` explícito. `org.wiremock:wiremock-standalone` no lo gestiona Boot
+  (su `latest` es una beta) → versión explícita estable 3.13.2.
+- En el equipo de desarrollo **no hay `javac` en el `PATH`** (solo un JRE 25 headless); el build
+  local se hace con `JAVA_HOME` apuntando a un JDK (p. ej. el JBR de JetBrains, que trae `javac`).
+  En CI se usa temurin 21.
+- El remoto `git@github-personal:xjapn03/saaspa-IA.git` **no** tiene un `Host github-personal`
+  definido en `~/.ssh/config` → las operaciones remotas fallarían hasta definir ese alias.
 
 ---
 
@@ -218,7 +236,7 @@ saaspa-IA/
 │       └── internal-api.openapi.yaml  # IA -> NestJS (a implementar en saaspa-backend)
 ├── eval/                              # datasets de evaluación (jsonl) y runner
 └── src/
-    ├── main/java/com/kamerinos/ia/
+    ├── main/java/com/juanp/saaspa/ia/
     │   ├── api/         # controladores (/api/v1/chat), DTOs (records), manejo de errores (ProblemDetail)
     │   ├── security/    # verificación de servicio y turn token
     │   ├── agent/       # customer/, admin/: ChatClient, prompts, políticas, handoff
@@ -406,22 +424,22 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Proyecto generado con Spring Initializr: Boot 4.1.1, Java 21, BOM de Spring AI 2.0.1 (pom por corregir)
 - [x] Auditoría inicial del `pom.xml` y del repo (hallazgos en la sección 7)
 
-### Fase 0 — Alineación y contratos
-- [ ] Ramas `main` y `develop` configuradas; trabajo en `feature/f0-alineacion`
-- [ ] `pom.xml` corregido: groupId/artifactId/name, sin bloques vacíos, starter de LLM, JDBC, Flyway, WireMock
-- [ ] Memoria: decisión D-MEM aplicada (starter correcto en el pom)
-- [ ] Paquete `com.kamerinos.ia`, clase principal renombrada, `HELP.md` eliminado
-- [ ] `application.yml`, `application-local.yml`, `.env.example`, `.gitignore` revisado
-- [ ] `docker-compose.yml` de desarrollo (Postgres+pgvector, Redis)
-- [ ] Migración Flyway `V1` con esquema `ia`
-- [ ] ADR 0006 (identidad y turn token)
-- [ ] ADR 0007 (memoria y persistencia)
-- [ ] ADR 0008 (herramientas de escritura)
-- [ ] Correcciones a ADR 0003 y 0005
-- [ ] `docs/contracts/chat-api.openapi.yaml` y `internal-api.openapi.yaml` (borradores)
-- [ ] README y roadmap alineados con este archivo
-- [ ] CI en GitHub Actions
-- [ ] `./mvnw -B verify` verde y `/actuator/health` en UP
+### Fase 0 — Alineación y contratos ✅ (2026-09-23)
+- [x] Ramas `main` y `develop` configuradas; trabajo en `feature/f0-alineacion`
+- [x] `pom.xml` corregido: groupId/artifactId/name, sin bloques vacíos, starter de LLM, JDBC, Flyway, WireMock
+- [x] Memoria: decisión D-MEM aplicada (`spring-ai-starter-model-chat-memory-repository-jdbc`)
+- [x] Paquete `com.juanp.saaspa.ia`, clase `SaaspaIaApplication`, `HELP.md` eliminado
+- [x] `application.yml`, `application-local.yml`, `.env.example`, `.gitignore` (ignora `.env`)
+- [x] `docker-compose.yml` de desarrollo (`pgvector/pgvector:pg15` + `redis:7-alpine`)
+- [x] Migración Flyway `V1` con esquema `ia`
+- [x] ADR 0006 (identidad y turn token)
+- [x] ADR 0007 (memoria y persistencia)
+- [x] ADR 0008 (herramientas de escritura)
+- [x] Correcciones a ADR 0003 y 0005
+- [x] `docs/contracts/chat-api.openapi.yaml` y `internal-api.openapi.yaml` (borradores)
+- [x] README y roadmap alineados con este archivo
+- [x] CI en GitHub Actions
+- [x] `./mvnw -B verify` verde (JDK local; temurin 21 en CI) y `/actuator/health` en UP
 
 ### Fase 1 — Cerebro mínimo + chat web anónimo
 - [ ] Verificación de servicio y turn token
@@ -459,11 +477,11 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 
 | ID | Tema | Propuesta actual | Estado |
 |---|---|---|---|
-| D-MEM | Memoria de conversación | **JDBC en esquema `ia`** (Postgres): durable, auditable, no requiere Redis Stack. Guardar solo turnos finales usuario/asistente. Redis estándar queda para idempotencia, rate limiting y caché. Alternativa: Redis Stack dedicado. | Pendiente de confirmar |
-| D-LLM | Proveedor de chat | DeepSeek, detrás de `ChatClient` | Pendiente de confirmar |
+| D-MEM | Memoria de conversación | **JDBC en esquema `ia`** (Postgres), `initialize-schema: never`, tabla por Flyway V1, solo turnos finales, ventana 10, `conversationId={tenantId}:{channel}:{conversationId}`. Redis estándar para idempotencia/rate limiting/caché. | **Confirmada** (2026-09-23) — ver ADR 0007 |
+| D-LLM | Proveedor de chat | **DeepSeek** (`deepseek-flash`), detrás de `ChatClient` | **Confirmada** (2026-09-23) — soporta tool calling |
 | D-EMB | Proveedor de embeddings (Fase 4) | Por decidir (verificar si el proveedor de chat ofrece embeddings) | Abierta |
-| D-PG | Versión de PostgreSQL del backend | Igualar la mayor del backend | Preguntar a la persona |
-| D-ID | groupId / artifactId / paquete | `com.kamerinos` / `saaspa-ia` / `com.kamerinos.ia` | Pendiente de confirmar |
+| D-PG | Versión de PostgreSQL del backend | **PostgreSQL 15** (backend usa `pgvector/pgvector:pg15`) | **Confirmada** (2026-09-23) |
+| D-ID | groupId / artifactId / paquete | `com.juanp` / `saaspa-ia` / `com.juanp.saaspa.ia` (producto multi-tenant de portfolio; Kamerinos solo como `IA_TENANT_DEFAULT`) | **Confirmada** (2026-09-23) |
 | D-JAVA | Java 21 vs 25 | 21 (ADR 0001); 25 también está soportado por Boot 4.1 | Mantener 21 |
 | D-STREAM | Streaming SSE a través de NestJS | Después de la Fase 1 | Abierta |
 
@@ -474,6 +492,13 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 Añade una línea por tarea terminada: `fecha — rama — qué cambió — resultado de verify`.
 
 - 2026-09-23 — (docs) — AGENTS.md creado con contexto, reglas, git flow, fases y checklist.
+- 2026-09-23 — feature/f0-alineacion — pom corregido (coordenadas, DeepSeek, JDBC, Flyway, WireMock, memoria JDBC) — verify verde.
+- 2026-09-23 — feature/f0-alineacion — paquete `com.juanp.saaspa.ia`, `SaaspaIaApplication`, `HELP.md` fuera — verify verde.
+- 2026-09-23 — feature/f0-alineacion — `application.yml` + perfil local + `.env.example` + `.gitignore` (`.env`) — verify verde.
+- 2026-09-23 — feature/f0-alineacion — `docker-compose.yml` dev (pgvector pg15 + redis) + Flyway V1 (esquema `ia`) — verify verde.
+- 2026-09-23 — feature/f0-alineacion — ADRs 0006/0007/0008 + correcciones a 0003/0005 — verify verde.
+- 2026-09-23 — feature/f0-alineacion — contratos OpenAPI + CI GitHub Actions — verify verde.
+- 2026-09-23 — feature/f0-alineacion — README/roadmap alineados; D-ID/D-LLM/D-MEM/D-PG confirmadas; discrepancias registradas — verify verde.
 
 ---
 
