@@ -21,3 +21,13 @@ reutilizando el flujo Wompi existente.
   identidad por cliente en ambos canales.
 - **Negativas:** hay que definir la política de auto-creación (verificación, datos mínimos,
   consentimiento) y hacer único/consultable el teléfono para este fin.
+
+## Addendum (2026-09-23)
+
+La resolución de identidad por teléfono **solo aplica a WhatsApp**, donde el número lo verifica
+Meta (`waId`). En el **chat web anónimo nunca** se resuelve identidad a partir de un teléfono que
+la persona teclea: un número no verificado no identifica a nadie.
+
+La auto-creación de usuarios (cuando aplique) debe definir: consentimiento explícito y datos
+mínimos; su efecto en Meta CAPI (la atribución `ctwa_clid` solo cuando corresponda); y qué ocurre
+si dos `waId` distintos comparten teléfono.
