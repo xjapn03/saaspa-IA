@@ -52,6 +52,16 @@ saaspa:
     # Timeouts explicitos del cliente HTTP hacia NestJS (AGENTS.md, seccion 8).
     connect-timeout: ${BACKEND_CONNECT_TIMEOUT:1s}
     read-timeout: ${BACKEND_READ_TIMEOUT:5s}
+  chat-api:
+    # Clave de servicio en la direccion NestJS -> IA (IA_BOT_API_KEY; distinta de INTERNAL_API_KEY).
+    service-key: ${IA_BOT_API_KEY:}
   turn-token:
-    # Verificacion asimetrica: el servicio solo recibe la clave publica (ADR 0006).
-    public-key: ${TURN_TOKEN_PUBLIC_KEY:}
+    # Verificacion asimetrica ES256 (P-256): solo claves publicas, seleccionadas por kid (ADR 0006).
+    # Dos ranuras para rotar sin cortar el servicio (current firma; previous sigue aceptada).
+    audience: ${TURN_TOKEN_AUDIENCE:saaspa-ia}
+    issuer: ${TURN_TOKEN_ISSUER:}
+    keys:
+      - kid: ${TURN_TOKEN_KEY_CURRENT_KID:}
+        public-key: ${TURN_TOKEN_KEY_CURRENT_PUBLIC_KEY:}
+      - kid: ${TURN_TOKEN_KEY_PREVIOUS_KID:}
+        public-key: ${TURN_TOKEN_KEY_PREVIOUS_PUBLIC_KEY:}
