@@ -37,6 +37,13 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
+		<!-- Verificacion del turn token (ADR 0006): ES256 con clave publica EC y rotacion por kid.
+		     Resource server de Spring Security (Nimbus por debajo); jjwt descartado. Nombre oficial
+		     del starter en Boot 4 (el antiguo spring-boot-starter-oauth2-resource-server esta deprecado). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+		</dependency>
 		<!-- Redis estandar: idempotencia, rate limiting y cache. NO se usa Redis Stack. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

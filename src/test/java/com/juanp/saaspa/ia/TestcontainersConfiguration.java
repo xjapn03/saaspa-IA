@@ -8,7 +8,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
 
 	// pgvector/pgvector:pg15 alineado con el backend (PostgreSQL 15).
 	private static final DockerImageName POSTGRES_IMAGE =
