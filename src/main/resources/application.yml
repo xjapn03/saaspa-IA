@@ -46,8 +46,15 @@ logging:
 saaspa:
   tenant:
     default: ${IA_TENANT_DEFAULT:kamerinos}
+    # Nombre visible del negocio en los prompts.
+    display-name: ${IA_TENANT_DISPLAY_NAME:Kamerinos SPA Bogota}
     # Zona horaria del negocio: fechas relativas y horas de agenda (R13).
     timezone: ${IA_TENANT_TIMEZONE:America/Bogota}
+  agent:
+    # Ventana de memoria: mensajes que se envian al modelo (D-MEM).
+    memory-window: ${IA_AGENT_MEMORY_WINDOW:10}
+    # Prompt de sistema versionado del agente CLIENTAS (es-CO).
+    customer-prompt: classpath:prompts/customer-agent.v1.md
   backend:
     base-url: ${BACKEND_URL:http://localhost:3001}
     internal-api-key: ${INTERNAL_API_KEY:}

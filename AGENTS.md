@@ -196,6 +196,12 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
   así que un segmento ya codificado se **codifica dos veces** (`%20` → `%2520`). Usar plantillas con
   variables (`/services/{servicio}` + `build(variables)`), que expanden y codifican una sola vez;
   `BackendClient` ya expone esa sobrecarga.
+- **Spring AI 2.0, herramientas y memoria:** las herramientas de `ChatClient` no viajan en
+  `Prompt.getOptions()` (las gestiona un advisor de tool calling), así que para probarlas sin LLM hay que
+  usar `ToolCallbacks.from(bean)` y el contrato HTTP con WireMock. El id de conversación de la memoria se
+  pasa por turno con el parámetro `ChatMemory.CONVERSATION_ID`; declarar un `ChatMemory` propio
+  (`MessageWindowChatMemory`) fija la ventana sin depender de los valores por defecto de la
+  autoconfiguración.
 
 ---
 
@@ -629,7 +635,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] T1.0 Contratos validados contra `saaspa-backend` (lectura con `gh`; `develop@ce41e487`, 2026-09-24)
 - [x] Verificación de servicio y turn token (ES256, dos claves públicas por `kid`; `ProblemDetail` en 401 — T1.1, 2026-09-24)
 - [ ] `POST /api/v1/chat` con validación y `ProblemDetail`
-- [ ] Agente CLIENTAS + prompt v1 (es-CO) + memoria con ventana
+- [x] Agente CLIENTAS + prompt v1 (es-CO) + memoria con ventana (`customer-agent.v1.md` con fecha/zona del tenant, `ChatMemory` de ventana configurable, id `{tenantId}:{channel}:{conversationId}` — T1.5, 2026-09-24)
 - [x] Cliente HTTP hacia NestJS con timeouts (`RestClient`, clave de servicio, turn token reenviado, mapeo de errores; probado con WireMock — T1.2, 2026-09-24)
 - [x] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (`@Tool` en español, precios en COP preformateados, `ok=false` sin excepción — T1.3, 2026-09-24)
 - [ ] Handoff y política de temas sensibles
@@ -694,6 +700,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-24 — feature/f1-backend-http-client — T1.2: cliente HTTP hacia NestJS (`RestClient` con `HttpClientSettings` de Boot 4.1, timeouts `saaspa.backend.*`, cabecera de servicio `X-Internal-Api-Key`, reenvío del turn token, `BackendException`/`BackendUnavailableException`) + 7 tests de contrato con WireMock — verify verde (8 tests).
 - 2026-09-24 — feature/f1-turn-token-verification — T1.1: verificación ES256 (P-256) del turn token con dos claves públicas por `kid` (`withJwkSource`, `jwsAlgorithm(ES256)`, audiencia e issuer opcional), clave de servicio de entrada con comparación en tiempo constante, identidad del turno accesible por `CurrentTurnToken` y 401 con `ProblemDetail`; dependencia `spring-boot-starter-security-oauth2-resource-server`; 24 tests nuevos (decoder, converter, clave de servicio y cadena completa con MockMvc) — verify verde (32 tests).
 - 2026-09-24 — feature/f1-read-tools — T1.3: herramientas de lectura del agente CLIENTAS (`listarServicios`, `consultarServicio`, `consultarDisponibilidad`) con `@Tool` en español, DTO de cable mínimos, precios formateados en COP, validación de fechas en la zona horaria del tenant (R13) y fallos como `ok=false` sin excepción (R11); `BackendClient` gana la sobrecarga con plantilla de ruta (evita la doble codificación); 10 tests nuevos con WireMock — verify verde (42 tests).
+- 2026-09-24 — feature/f1-customer-agent — T1.5: agente CLIENTAS (`CustomerAgent` + `CustomerAgentConfig`) con prompt v1 en es-CO versionado (`prompts/customer-agent.v1.md`) al que se inyectan negocio, fecha de hoy y zona horaria (R13), herramientas de solo lectura por defecto, memoria con ventana configurable (`saaspa.agent.memory-window`) e id namespaced `{tenantId}:{channel}:{conversationId}` (D-MEM), y respuesta con modelo y tokens para el registro del turno; 7 tests nuevos con `ChatModel` doble (R14) — verify verde (49 tests).
 
 ---
 

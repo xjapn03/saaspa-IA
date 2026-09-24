@@ -13,11 +13,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * fechas relativas en las herramientas.
  *
  * @param defaultTenant tenant del piloto ({@code kamerinos})
+ * @param displayName nombre visible del negocio para los prompts
  * @param timeZone zona horaria del negocio, en formato {@link ZoneId}
  */
 @ConfigurationProperties("saaspa.tenant")
 public record TenantProperties(
 		@DefaultValue("kamerinos") String defaultTenant,
+		@DefaultValue("Kamerinos SPA Bogota") String displayName,
 		@DefaultValue("America/Bogota") String timeZone) {
 
 	/** @return la zona horaria del negocio como {@link ZoneId} */
