@@ -4,6 +4,9 @@
 > desplegado en `saaspa-backend` (NestJS) + `saaspa-frontend` (Next.js). Este repo
 > (`saaspa-IA`) es el **servicio de IA separado** en Java/Spring AI que se integra a ese
 > producto. La v3 (multi-tenant, todo en Spring) queda descartada; la tenancy se retoma como multi-tenant híbrido (ver §6.6).
+>
+> **Fuente de verdad:** [`AGENTS.md`](./AGENTS.md) y las ADRs en `docs/adr/`. Si algo de este
+> roadmap las contradice, mandan ellas. Este documento es el plan largo; AGENTS.md es el contrato.
 
 ---
 
@@ -38,8 +41,8 @@ pagos (Wompi), e-commerce, Google Calendar y Meta CAPI.
 
 ## 3. Stack
 
-- **IA (este repo):** Java 21+ · Spring Boot 4 · Spring AI 2.0 (`ChatClient`, Advisors,
-  Chat Memory, RAG/ETL, Tool Calling, Structured Output).
+- **IA (este repo):** Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1 (`ChatClient`, Advisors,
+  Chat Memory JDBC, RAG/ETL, Tool Calling, Structured Output). LLM: DeepSeek `deepseek-flash`.
 - **Sistema de registro (existente):** NestJS 11 · Prisma · PostgreSQL 15 + pgvector · Redis.
 - **Frontend (existente):** Next.js 16 · React 19 · Tailwind v4 · shadcn/ui.
 - **LLM:** proveedor externo intercambiable detrás de Spring AI.
@@ -209,8 +212,9 @@ POST {IA_BOT_URL}/api/v1/chat
 
 ### 9.2 Java → NestJS (ejecución de tools)
 
-Autenticación servicio-a-servicio (`Authorization: Bearer {INTERNAL_API_KEY}`), rate-limit y solo
-red interna (no expuesto en Nginx). Endpoints:
+Autenticación: `X-Internal-Api-Key` (transporte) + **turn token firmado ES256/EdDSA** reenviado en
+cada llamada (identidad; NestJS autoriza con el token, ADR 0006). Solo red interna (no expuesto en
+Nginx). Endpoints:
 
 - `GET /api/internal/services`, `GET /api/internal/products`
 - `GET /api/internal/bookings/slots`, `POST /api/internal/bookings`, `PATCH/DELETE /api/internal/bookings/:id`
