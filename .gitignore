@@ -1,42 +1,33 @@
-# ---- Java / Spring Boot ----
+HELP.md
 target/
-*.class
-*.jar
-*.war
-*.ear
-!.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
 
-# ---- Build tools (Maven / Gradle) ----
-build/
-.gradle/
-out/
-.mvn/
-!gradle/wrapper/gradle-wrapper.jar
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
 
-# ---- IDE ----
-.idea/
+### IntelliJ IDEA ###
+.idea
+*.iws
 *.iml
 *.ipr
-*.iws
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
 .vscode/
-*.swp
-
-# ---- OS ----
-.DS_Store
-Thumbs.db
-
-# ---- Environment & secrets ----
-.env
-.env.*
-!.env.example
-
-# ---- Logs ----
-*.log
-logs/
-
-# ---- Tests & coverage ----
-/test-results/
-*.junit
-
-# ---- Node (eval scripts, optional) ----
-node_modules/
