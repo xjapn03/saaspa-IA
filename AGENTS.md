@@ -37,8 +37,10 @@ base de datos de negocio.
 | `saaspa-IA` (**este**) | Cerebro de los agentes CLIENTAS y ADMIN. |
 | `kamerinos-infra` | Docker Compose + Nginx. Añade el contenedor `ia-bot` a la red interna. |
 
-**Regla:** desde este repo **nunca se modifican los otros repos**. Si se necesita un endpoint nuevo en NestJS,
-se documenta en `docs/contracts/` y en la sección [11. Pedidos a otros repos](#11-pedidos-a-otros-repos).
+**Regla:** desde este repo **nunca se modifican los otros repos** (ni commits, ni push, ni PRs allí).
+Sí se pueden **leer** con `gh` en modo solo lectura para validar contratos (ver sección 9). Si se necesita un
+endpoint nuevo en NestJS, se documenta en `docs/contracts/` y en la sección
+[11. Pedidos a otros repos](#11-pedidos-a-otros-repos); la persona lo implementa en su repo.
 
 ---
 
@@ -215,8 +217,9 @@ Resuelto respecto del snapshot inicial de Initializr:
 - En el equipo de desarrollo **no hay `javac` en el `PATH`** (solo un JRE 25 headless); el build
   local se hace con `JAVA_HOME` apuntando a un JDK (p. ej. el JBR de JetBrains, que trae `javac`).
   En CI se usa temurin 21.
-- El remoto `git@github-personal:xjapn03/saaspa-IA.git` **no** tiene un `Host github-personal`
-  definido en `~/.ssh/config` → las operaciones remotas fallarían hasta definir ese alias.
+- El remoto `origin` usa el alias `git@github-personal:xjapn03/saaspa-IA.git` y en la Fase 0 no había un
+  `Host github-personal` en `~/.ssh/config`. Desde entonces la persona autenticó `gh` con protocolo SSH
+  (ver sección 9). **Verificar** con `git ls-remote origin` antes de la primera operación remota.
 
 ---
 
@@ -266,29 +269,122 @@ Convenciones:
 
 ---
 
-## 9. Git flow
+## 9. Git flow, GitHub y pull requests
 
-Ramas:
+### Entorno de desarrollo
+
+- Sistema: **Fedora Linux** (equipo de la persona), shell bash. Se necesita un **JDK 21 completo** (con `javac`).
+  Si falta, avisar a la persona; **no instalar paquetes del sistema** sin pedir permiso.
+- **GitHub CLI (`gh`)** instalado y autenticado. Estado verificado por la persona el 2026-09-23
+  (`gh auth status`): sesión activa de la cuenta **`xjapn03`** (keyring), protocolo de Git **ssh**, scopes
+  `admin:public_key`, `gist`, `read:org` y `repo`.
+- Con esa sesión el agente puede revisar el estado del repo y del CI, hacer push de sus ramas y abrir PRs,
+  siguiendo las reglas de abajo. Los scopes `admin:public_key` y `gist` **no se usan**.
+- Antes de la primera operación remota de la sesión: `gh auth status` y `git ls-remote origin`. Si `origin` falla
+  por el alias `github-personal`, **no editar `~/.ssh/config` ni cambiar el remoto por cuenta propia**: informar y
+  proponer `git remote set-url origin git@github.com:xjapn03/saaspa-IA.git`.
+- **`mvnw` y el bit de ejecución:** en este equipo `core.fileMode=false`, así que git puede guardar `mvnw` como
+  `100644` y el CI falla con *exit 126*; se corrige con `git update-index --chmod=+x mvnw` (queda `100755`).
+
+### Ramas
 
 | Rama | Uso |
 |---|---|
-| `main` | Siempre desplegable. Protegida. Solo recibe PRs desde `develop` (release) o `hotfix/*`. Cada fase terminada se etiqueta `vX.Y.0`. |
+| `main` | Siempre desplegable. Protegida. Solo recibe PRs de release desde `develop` (o `hotfix/*`), y solo cuando la persona lo pida. Cada fase terminada se etiqueta `vX.Y.0`. |
 | `develop` | Integración. Solo recibe PRs desde ramas de trabajo. |
 | `feature/<fase>-<slug>` | Trabajo nuevo, p. ej. `feature/f1-chat-endpoint`. Sale de `develop`. |
 | `fix/<slug>` | Corrección de bugs. Sale de `develop`. |
-| `docs/<slug>` · `chore/<slug>` | Documentación / mantenimiento. |
+| `docs/<slug>` · `chore/<slug>` | Documentación / mantenimiento. Salen de `develop`. |
 | `hotfix/<slug>` | Urgente sobre `main`; luego se fusiona también a `develop`. |
 
-Reglas:
-- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `test:`,
+### Commits
+
+- [Conventional Commits](https://www.conventionalcommits.org/) en inglés: `feat:`, `fix:`, `docs:`, `test:`,
   `refactor:`, `chore:`, `build:`, `ci:`. Pequeños y enfocados. Ejemplo: `feat(tools): add listServices tool`.
-- **PRs:** de rama de trabajo a `develop`, con squash merge. Descripción: qué, por qué, cómo se probó, checklist tocado.
-  Un PR = una tarea del checklist.
-- **Agentes de IA:** pueden crear ramas y hacer commits locales. **No** hacen `push`, no abren ni fusionan PRs,
-  **no** reescriben historia (`--force`, `rebase` de ramas compartidas) y **no** commitean directo a `main` o
-  `develop`, salvo instrucción explícita de la persona.
-- Nunca commitear secretos, `.env`, dumps de datos reales ni conversaciones reales sin anonimizar.
+- **Sin emojis** en commits, código ni PRs.
 - Antes de cada commit: `./mvnw -B verify` en verde.
+- Nunca commitear secretos, `.env`, dumps de datos reales ni conversaciones reales sin anonimizar.
+
+### Qué puede y qué no puede hacer el agente con git y gh
+
+**Permitido**
+- **Leer:** `git fetch`, `git ls-remote`, `gh auth status`, `gh repo view`, `gh pr list|view|diff|checks|status`,
+  `gh run list|view|watch`, `gh run view --log-failed`, `gh issue list|view`.
+- **Leer otros repos (solo lectura)** para validar contratos, p. ej. `saaspa-backend`: `gh repo view`,
+  `gh api` con método GET (contenidos, árboles), `gh search code`, o un clon superficial en un directorio
+  temporal **fuera de este repo** (`gh repo clone <owner>/<repo> /tmp/... -- --depth 1`). Sin commits, push ni
+  PRs en esos repos. La persona confirma el `owner/nombre` exacto si no es evidente (`gh repo list`).
+- **Escribir en este repo:** crear ramas desde `develop`, hacer commits, `git push -u origin <rama-propia>`
+  (solo `feature/*`, `fix/*`, `docs/*`, `chore/*`), volver a hacer push (sin force) para corregir CI o comentarios,
+  `gh pr create --base develop`, y `gh pr edit` / `gh pr comment` en **sus propios** PRs.
+
+**Prohibido sin instrucción explícita de la persona**
+- **Fusionar PRs** de cualquier forma: `gh pr merge` (incluidos `--auto` y `--admin`), fusión por API, o `git merge`
+  o push directo a `main` o `develop`. **La persona valida y fusiona manualmente.**
+- Aprobar, cerrar o reabrir PRs (`gh pr review`, `gh pr close`, `gh pr reopen`).
+- `--force` y `--force-with-lease`, rebase de ramas ya subidas, borrar ramas remotas, reescribir historia.
+- Cambiar configuración del repo o de la cuenta: `gh repo edit|delete|rename|archive`, `gh secret`,
+  `gh variable`, `gh ruleset`, protección de ramas, `gh ssh-key`, `gh gpg-key`, `gh gist`,
+  `gh auth login|logout|refresh|token|setup-git`, y cualquier `gh api` de escritura (POST/PUT/PATCH/DELETE).
+- Crear releases o tags, o lanzar workflows a mano (`gh workflow run`), salvo que la persona lo pida.
+- **Imprimir, registrar o guardar el token de GitHub** (nunca `gh auth token` ni `gh auth status --show-token`).
+  No pegar salidas con credenciales en commits, PRs, issues o logs.
+
+### Ciclo de una rama
+
+1. `git fetch origin && git checkout develop && git pull --ff-only`.
+2. `git checkout -b feature/f1-<slug>`.
+3. Commits atómicos, con `verify` verde antes de cada uno.
+4. **El agente decide cuándo abrir el PR:** cuando el trabajo cumple la definición de "hecho" (o cierra el grupo de
+   tareas del plan). No abre PRs por cada commit ni con trabajo sin verificar. Si tiene que dejar algo a medias,
+   lo abre como borrador (`--draft`).
+   `git push -u origin <rama>` y `gh pr create --base develop --title "..." --body-file /tmp/<archivo>.md`
+   (el cuerpo va en un archivo temporal **fuera del repo**, para evitar problemas de comillas).
+5. Revisar el CI: `gh pr checks <n>` o `gh run watch`. Si falla, corregir en la misma rama con un commit nuevo y push
+   (sin force) y anotarlo en el PR.
+6. **Detenerse y resumir a la persona.** El PR queda creado y abierto, **esperando validación y merge manual**
+   (squash merge). El agente no fusiona ni da por hecho el merge.
+7. Cuando la persona indique que fusionó: `git checkout develop && git pull --ff-only` y `git branch -d <rama>`.
+   No empezar la siguiente rama hasta que el PR anterior esté fusionado, salvo autorización expresa
+   (evita conflictos con el squash).
+
+### Reglas de los pull requests
+
+- **Idioma: inglés. Sin emojis** en título, descripción ni comentarios. Tono técnico y directo, sin marketing.
+- **Título:** estilo Conventional Commits, en imperativo, máximo 72 caracteres, sin punto final.
+  Ejemplo: `feat(chat): add POST /api/v1/chat with turn token validation`.
+- **Descripción completa y útil**, con esta plantilla (también en `.github/pull_request_template.md`):
+
+```markdown
+## Summary
+One or two sentences: what this PR does and why.
+
+## Context
+Relevant ADR, AGENTS.md task IDs (for example T1.2) and any constraint or decision behind the change.
+
+## Changes
+- Main changes, grouped by area.
+
+## Testing
+- Commands run (for example `./mvnw -B verify`) and their results.
+- New or updated tests and what they cover.
+- What was not tested and why.
+
+## AGENTS.md checklist
+- [x] Exact checklist lines completed by this PR
+
+## Risks and notes
+Security, data or cost implications, contract changes, follow-ups and open questions.
+```
+
+- **Un PR = una tarea del checklist o un grupo coherente de tareas** definido en el plan de la fase, con commits
+  atómicos por tarea. Pequeños y revisables.
+- Base siempre `develop`. Nada de secretos, PII ni conversaciones reales en el título, la descripción o los comentarios.
+- Los cambios de contrato se mencionan en "Risks and notes" y en la sección 11 de este archivo.
+
+### Protección de ramas (la configura la persona, no el agente)
+
+Recomendado: PR obligatorio hacia `develop` y `main`, check `verify` obligatorio, sin push directo y squash merge.
 
 ### Definición de "hecho" (para cada tarea)
 - [ ] Compila y `./mvnw -B verify` en verde
@@ -297,6 +393,7 @@ Reglas:
 - [ ] Dataset `eval/` actualizado si cambió el comportamiento del agente
 - [ ] Documentación/ADR/contratos actualizados
 - [ ] Checklist y registro de cambios de este archivo actualizados
+- [ ] Rama subida, PR abierto contra `develop` (en inglés, sin emojis, con la plantilla) y CI en verde
 
 ---
 
@@ -314,6 +411,9 @@ Objetivo: dejar el repo coherente y los contratos definidos antes de escribir l�
 - **Criterio de aceptación:** `./mvnw -B verify` verde, `/actuator/health` en UP, ADRs y contratos revisados por la persona.
 
 ### Fase 1 — Cerebro mínimo + chat web anónimo (solo lectura)
+- **T1.0 Validar contratos contra el código real de `saaspa-backend`**, leyéndolo con `gh` en solo lectura:
+  qué endpoints internos existen, cómo se emite hoy el JWT, forma de servicios y disponibilidad. Registrar las
+  diferencias en `docs/contracts/` y en "Pedidos a otros repos". No modificar el backend.
 - `POST /api/v1/chat`: autenticación de servicio + verificación del turn token, validación, `ProblemDetail`.
 - Agente CLIENTAS con `ChatClient`, prompt v1 (es-CO), memoria (ver D-MEM) y ventana corta.
 - Herramientas de lectura: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (cliente HTTP hacia el
@@ -360,8 +460,8 @@ recordatorios/promociones proactivas (requieren consentimiento y plantillas de M
 
 ## 11. Pedidos a otros repos
 
-Contratos **borrador** (validar contra el código real de NestJS; este repo no puede verlo).
-Se cierran en `docs/contracts/` durante la Fase 0.
+Contratos **borrador**. Se validan contra el código real de NestJS leyéndolo con `gh` en solo lectura (tarea T1.0)
+y se cierran en `docs/contracts/`.
 
 **`POST /api/v1/chat`** (NestJS → IA)
 
@@ -424,7 +524,16 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Proyecto generado con Spring Initializr: Boot 4.1.1, Java 21, BOM de Spring AI 2.0.1 (pom por corregir)
 - [x] Auditoría inicial del `pom.xml` y del repo (hallazgos en la sección 7)
 
-### Fase 0 — Alineación y contratos ✅ (2026-09-23)
+### Entorno y flujo de trabajo
+- [x] `gh` autenticado como `xjapn03` (SSH, scopes `repo`, `read:org`, `admin:public_key`, `gist`) y documentado (2026-09-23)
+- [x] `git ls-remote origin` verificado (alias `github-personal` resuelto el 2026-09-23; sin push a `main`)
+- [x] Ramas `main` y `develop` en el remoto; PR de `feature/f0-alineacion` fusionado en `develop` (2026-09-23)
+- [ ] Reglas de GitHub de la sección 9 incorporadas a `develop` (PR `docs/agents-github-workflow`)
+- [ ] `.github/pull_request_template.md` creada
+- [ ] Protección de ramas configurada por la persona (PR obligatorio, check `verify`, sin push directo)
+- [ ] JDK 21 con `javac` instalado en el equipo (documentado en el README)
+
+### Fase 0 — Alineación y contratos (completada 2026-09-23)
 - [x] Ramas `main` y `develop` configuradas; trabajo en `feature/f0-alineacion`
 - [x] `pom.xml` corregido: groupId/artifactId/name, sin bloques vacíos, starter de LLM, JDBC, Flyway, WireMock
 - [x] Memoria: decisión D-MEM aplicada (`spring-ai-starter-model-chat-memory-repository-jdbc`)
@@ -442,6 +551,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] `./mvnw -B verify` verde (JDK local; temurin 21 en CI) y `/actuator/health` en UP
 
 ### Fase 1 — Cerebro mínimo + chat web anónimo
+- [ ] T1.0 Contratos validados contra `saaspa-backend` (lectura con `gh`)
 - [ ] Verificación de servicio y turn token
 - [ ] `POST /api/v1/chat` con validación y `ProblemDetail`
 - [ ] Agente CLIENTAS + prompt v1 (es-CO) + memoria con ventana
@@ -499,6 +609,9 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-23 — feature/f0-alineacion — ADRs 0006/0007/0008 + correcciones a 0003/0005 — verify verde.
 - 2026-09-23 — feature/f0-alineacion — contratos OpenAPI + CI GitHub Actions — verify verde.
 - 2026-09-23 — feature/f0-alineacion — README/roadmap alineados; D-ID/D-LLM/D-MEM/D-PG confirmadas; discrepancias registradas — verify verde.
+- 2026-09-23 — (nota) — En la Fase 0 se hizo fast-forward local de `main` desde `feat/chat-ia` sin autorización explícita; sin push. Desde ahora `main` solo se toca por PR de release desde `develop`.
+- 2026-09-23 — docs/agents-github-workflow — AGENTS.md: entorno Fedora, `gh` autenticado, permisos y prohibiciones de git/gh, reglas de PR (inglés, sin emojis, plantilla, merge manual), lectura de otros repos, T1.0 — (solo documentación).
+- 2026-09-23 — docs/agents-github-workflow — checklist de entorno actualizado (gh verificado, ramas en el remoto y PR de Fase 0 fusionado), plantilla de PR y nota del bit ejecutable de `mvnw` — (solo documentación).
 
 ---
 
@@ -513,6 +626,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 5. **Preguntar a la persona antes de:** tomar una decisión de arquitectura no cubierta, añadir una dependencia no
    listada aquí, tocar otro repo, hacer llamadas a un LLM real (cuestan), o cualquier operación destructiva de git.
 6. **Al terminar cada tarea:** correr `./mvnw -B verify`, actualizar checklist y registro de cambios, y resumir
-   en pocas líneas qué se hizo, qué se probó y qué sigue.
+   en pocas líneas qué se hizo, qué se probó y qué sigue. **Al cerrar una rama o grupo de tareas:** push, PR contra
+   `develop` según la sección 9, revisar el CI y **detenerse**: la persona valida y fusiona manualmente.
 7. **Ante ambigüedad entre documentos:** este archivo y las ADRs mandan sobre el README y el roadmap largo.
    Señalar la contradicción y proponer la corrección.
