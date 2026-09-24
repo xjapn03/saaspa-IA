@@ -1,0 +1,127 @@
+openapi: 3.1.0
+info:
+  title: saaspa-backend - Web Chat API (Frontend -> NestJS)
+  version: 0.1.0
+  description: >-
+    Contrato BORRADOR (tarea T1.0) del punto de entrada de chat web que debe exponer saaspa-backend.
+    NO existe todavia en el backend: es el pedido 3 de AGENTS.md seccion 11 (la validacion contra
+    develop@ce41e487 esta en docs/contracts/t1.0-backend-validation.md).
+    El frontend (widget anonimo, chat logueado y chat del dashboard) habla SIEMPRE con NestJS,
+    nunca directamente con saaspa-IA. NestJS resuelve tenantId, canal, agente, rol e identidad, y
+    emite el turn token antes de llamar a saaspa-IA (POST /api/v1/chat). El cliente NO envia tenant,
+    canal, agente, rol ni identidad: solo mensaje y conversationId.
+    Anti-abuso obligatorio: throttling por IP y por sesion, longitud maxima de mensaje, tope de
+    mensajes por sesion anonima y sin PII en logs. El conversationId anonimo debe ser impredecible
+    (aleatorio de 128 bits) y estar atado a la sesion.
+servers:
+  - url: https://kamerinos.sandrapinzonsaludybelleza.com.co
+paths:
+  /api/chat:
+    post:
+      operationId: webChat
+      summary: Procesa un turno del chat web (anonimo o logueado)
+      description: >-
+        Resuelve tenant, canal y agente en el servidor; si hay cookie de sesion valida, la identidad
+        y el rol salen del token de sesion. Emite el turn token y reenvia el turno a saaspa-IA.
+      security:
+        - {}
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebChatRequest'
+      responses:
+        '200':
+          description: Respuesta del agente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebChatResponse'
+        '400':
+          description: Cuerpo invalido (mensaje vacio o campos desconocidos)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413':
+          description: Mensaje demasiado largo (limite del servidor)
+        '429':
+          description: >-
+            Limite de tasa alcanzado (por IP o por sesion) o tope de mensajes de la sesion anonima
+            agotado
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: kamerinos_access_token
+      description: >-
+        Cookie httpOnly de sesion que ya emite el backend. Su ausencia (o caducidad) implica visitante
+        anonimo, no un error.
+  schemas:
+    WebChatRequest:
+      type: object
+      required: [message]
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          maxLength: 64
+          description: >-
+            Identificador de la conversacion del widget. Ausente en el primer turno: NestJS lo genera
+            (aleatorio de 128 bits, impredecible), lo ata a la sesion y lo devuelve en la respuesta.
+        message:
+          type: object
+          required: [text]
+          additionalProperties: false
+          properties:
+            text:
+              type: string
+              minLength: 1
+              maxLength: 1000
+    WebChatResponse:
+      type: object
+      required: [conversationId, turnId, reply]
+      properties:
+        conversationId:
+          type: string
+          description: Identificador que el widget debe reenviar en los siguientes turnos.
+        turnId:
+          type: string
+          format: uuid
+        reply:
+          type: object
+          required: [text]
+          properties:
+            text: { type: string }
+            links:
+              type: array
+              items:
+                type: object
+                required: [label, url]
+                properties:
+                  label: { type: string }
+                  url: { type: string, format: uri }
+        handoff:
+          type: object
+          properties:
+            requested: { type: boolean }
+            reason: { type: string }
+        usage:
+          type: object
+          properties:
+            model: { type: string }
+            tokensIn: { type: integer }
+            tokensOut: { type: integer }
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+      description: >-
+        Formato de error de saaspa-IA (RFC 9457). El backend hoy responde
+        {statusCode, message, error}; si NestJS reenvia el error de IA, debe mapearlo.
