@@ -1,11 +1,20 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.1.0
+  version: 0.2.0
   description: >-
-    Contrato BORRADOR. NestJS es el unico punto de entrada de canales: resuelve tenant,
-    identidad y rol, y llama a este servicio. Pendiente de validar contra el backend real.
-    Autenticacion: API key de servicio (transporte) + turn token firmado (identidad, ADR 0006).
+    Contrato BORRADOR v0.2.0, revisado contra saaspa-backend@develop (ce41e487) en la tarea T1.0
+    (informe: docs/contracts/t1.0-backend-validation.md). NestJS sigue siendo el unico punto de
+    entrada de canales: resuelve tenant, identidad y rol, y llama a este servicio.
+    Estado en el backend: el emisor del turn token NO existe todavia (hoy solo hay JWT de sesion
+    HS256 para usuarios) y tampoco existe un cliente HTTP hacia este servicio; es un pedido
+    (AGENTS.md seccion 11, pedidos 1 y 3).
+    Autenticacion: cabecera de servicio X-Internal-Api-Key con el valor de IA_BOT_API_KEY
+    (NestJS -> IA; clave distinta de INTERNAL_API_KEY, que es IA -> NestJS) mas el turn token
+    firmado en Authorization: Bearer.
+    Reglas: el tenantId del cuerpo se valida contra la lista permitida de este servicio
+    (IA_TENANT_DEFAULT); la identidad real es la del turn token y los campos del cuerpo nunca
+    sustituyen a sus claims.
 servers:
   - url: http://localhost:8000
 paths:
@@ -41,10 +50,17 @@ components:
       type: apiKey
       in: header
       name: X-Internal-Api-Key
+      description: >-
+        Valor de IA_BOT_API_KEY (direccion NestJS -> IA). No confundir con INTERNAL_API_KEY,
+        que es el secreto de la direccion IA -> NestJS (/api/internal/v1/*).
     turnToken:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >-
+        Turn token ES256 (P-256, PEM, cabecera kid) emitido por NestJS (ADR 0006, pedido 1),
+        pendiente de implementar en saaspa-backend. Este servicio solo verifica con la clave
+        publica y acepta dos claves por kid para rotar sin cortar el servicio.
   responses:
     Problem:
       description: Problem Details (RFC 9457)

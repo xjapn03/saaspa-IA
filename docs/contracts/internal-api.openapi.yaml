@@ -1,11 +1,19 @@
 openapi: 3.1.0
 info:
   title: NestJS Internal API (IA -> NestJS)
-  version: 0.1.0
+  version: 0.2.0
   description: >-
-    Contrato BORRADOR de los endpoints que NestJS debe exponer en /api/internal/v1/* para el
-    servicio de IA. Solo red interna Docker. Requiere INTERNAL_API_KEY (transporte) y turn token
-    (identidad). NestJS autoriza con la identidad del token. Todos los endpoints son tenant-scoped.
+    Contrato BORRADOR v0.2.0, revisado contra saaspa-backend@develop (ce41e487) en la tarea T1.0
+    (informe: docs/contracts/t1.0-backend-validation.md). Estado en el backend: NINGUN endpoint
+    /api/internal/v1/* existe todavia (ni modulo, ni controlador, ni guard); es el pedido 2 de
+    AGENTS.md seccion 11.
+    Autenticacion: cabecera X-Internal-Api-Key con el valor de INTERNAL_API_KEY (direccion
+    IA -> NestJS; secreto distinto de IA_BOT_API_KEY, que es NestJS -> IA) mas el turn token
+    (ADR 0006) en Authorization: Bearer. NestJS autoriza con la identidad DEL TOKEN, nunca con
+    parametros que envie este servicio ni con argumentos generados por el modelo.
+    Requisitos del lado NestJS: guard que valide el turn token; @SkipThrottle() o limite propio
+    (el ThrottlerGuard global es 100 req/60 s y hoy solo se salta en el webhook de WhatsApp);
+    auditoria con actor de servicio; sin PII en logs.
 servers:
   - url: http://backend:3001
 security:
@@ -16,51 +24,120 @@ paths:
     get:
       operationId: listServices
       summary: Catalogo de servicios activos (Fase 1)
+      description: >-
+        Espeja la semantica real de GET /api/services/public (isActive=true, orden por nombre,
+        paginado, price numerico) pero autorizado con el turn token.
       parameters:
-        - { name: categoryId, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: featured, in: query, schema: { type: boolean } }
       responses:
-        '200': { description: Lista de servicios }
-        '401': { description: Turn token invalido }
+        '200':
+          description: Lista paginada de servicios activos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedServices' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/internal/v1/services/{id}:
     get:
       operationId: getService
       summary: Detalle de un servicio (Fase 1)
+      description: >-
+        En la API real el detalle publico es por slug (GET /api/services/public/{slug}); aqui se
+        admite id o slug y no se filtra por isActive, igual que el endpoint real.
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: UUID del servicio o su slug
       responses:
-        '200': { description: Servicio }
-        '404': { description: No encontrado }
+        '200':
+          description: Servicio
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Service' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/internal/v1/availability:
     get:
       operationId: getAvailability
-      summary: Disponibilidad de agenda (Fase 1)
+      summary: Disponibilidad de agenda para un dia (Fase 1)
+      description: >-
+        Equivale a GET /api/bookings/slots?serviceId&date: un solo dia, agenda unica global (no hay
+        staffId). La respuesta DEBE traer instantes con offset explicito y el campo timezone, porque
+        el backend calcula las franjas con Date.setHours en la zona horaria del contenedor (riesgo
+        pendiente, ver docs/contracts/t1.0-backend-validation.md seccion 6).
       parameters:
         - { name: serviceId, in: query, required: true, schema: { type: string } }
-        - { name: from, in: query, required: true, schema: { type: string, format: date } }
-        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          example: '2026-10-01'
       responses:
-        '200': { description: Franjas disponibles }
+        '200':
+          description: Franjas disponibles del dia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Availability' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/internal/v1/bookings:
     post:
       operationId: createBooking
       summary: Crea una cita en PENDIENTE_PAGO (Fase 2, escritura)
+      description: >-
+        Nuevo respecto a la API publica: hoy POST /api/bookings no acepta Idempotency-Key y no
+        devuelve deep-link de pago (el pago se inicia con POST /api/payments/init, que entrega la
+        configuracion del widget). Pedido 5 de AGENTS.md seccion 11.
       parameters:
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingCreate' }
       responses:
-        '201': { description: Cita creada + deep-link de pago }
-        '409': { description: Slot ocupado }
+        '201':
+          description: Cita creada + deep-link de pago
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: Slot ocupado (el backend responde ConflictException) }
   /api/internal/v1/bookings/{id}:
     patch:
       operationId: rescheduleBooking
       summary: Reprograma una cita (Fase 2, escritura)
+      description: >-
+        Envuelve el comportamiento real de PATCH /api/bookings/{id}/reschedule (dueno o ADMIN); aqui
+        se anade Idempotency-Key.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startTime]
+              properties:
+                startTime: { type: string, format: date-time }
       responses:
-        '200': { description: Cita reprogramada }
+        '200':
+          description: Cita reprogramada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '409': { description: Slot ocupado }
     delete:
       operationId: cancelBooking
       summary: Cancela una cita (Fase 2, escritura)
+      description: >-
+        Envuelve el comportamiento real de PATCH /api/bookings/{id}/cancel (dueno o ADMIN); aqui se
+        anade Idempotency-Key.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
@@ -70,6 +147,7 @@ paths:
     get:
       operationId: myBookings
       summary: Citas del cliente autenticado (Fase 2)
+      description: Hoy equivale a GET /api/bookings cuando el rol es CLIENTE (el controlador filtra por userId).
       responses:
         '200': { description: Citas del cliente }
   /api/internal/v1/reports/sales:
@@ -100,7 +178,108 @@ components:
       type: apiKey
       in: header
       name: X-Internal-Api-Key
+      description: >-
+        Valor de INTERNAL_API_KEY (direccion IA -> NestJS). No confundir con IA_BOT_API_KEY, que es
+        el secreto de la direccion NestJS -> IA.
     turnToken:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >-
+        Turn token ES256 (P-256, PEM, cabecera kid) emitido por NestJS (ADR 0006, pedido 1). NestJS
+        autoriza con la identidad del token, nunca con parametros de la peticion.
+  responses:
+    Unauthorized:
+      description: Clave de servicio o turn token ausente, invalido o expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      description: >-
+        Formato de error de saaspa-IA (RFC 9457). El backend hoy responde
+        {statusCode, message, error}; el cliente de este servicio debe mapearlo.
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+    Category:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+    Service:
+      type: object
+      required: [id, name, slug, price, duration, isActive, isFeatured]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: [string, 'null'] }
+        price: { type: number, description: 'COP; el backend convierte el Decimal de Prisma a numero' }
+        compareAtPrice: { type: [number, 'null'] }
+        duration: { type: integer, description: 'Duracion en minutos' }
+        isActive: { type: boolean }
+        isFeatured: { type: boolean }
+        categoryId: { type: [string, 'null'] }
+        category: { $ref: '#/components/schemas/Category' }
+        imageUrl: { type: [string, 'null'] }
+        mainImage: { type: [string, 'null'] }
+        carouselImages: { description: 'JSON con la lista de imagenes (puede ser null)' }
+    PaginatedServices:
+      type: object
+      required: [data, total, page, limit, totalPages]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Service' } }
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        totalPages: { type: integer }
+    Slot:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: string
+          format: date-time
+          description: 'Instante con offset explicito, p. ej. 2026-10-01T08:00:00-05:00'
+          example: '2026-10-01T08:00:00-05:00'
+        end: { type: string, format: date-time, example: '2026-10-01T08:50:00-05:00' }
+    Availability:
+      type: object
+      required: [serviceId, date, timezone, slots]
+      properties:
+        serviceId: { type: string }
+        date: { type: string, format: date, example: '2026-10-01' }
+        timezone: { type: string, example: America/Bogota }
+        slots: { type: array, items: { $ref: '#/components/schemas/Slot' } }
+    BookingCreate:
+      type: object
+      required: [serviceId, startTime]
+      properties:
+        serviceId: { type: string }
+        startTime: { type: string, format: date-time }
+        payFull: { type: boolean, description: 'Pagar el total en lugar del abono, si el backend lo soporta' }
+    Booking:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [PENDIENTE_PAGO, CONFIRMADA, CANCELADA, COMPLETADA, NO_ASISTIO]
+        serviceId: { type: string }
+        startTime: { type: string, format: date-time }
+        endTime: { type: string, format: date-time }
+        paymentUrl:
+          type: [string, 'null']
+          format: uri
+          description: 'Deep-link de pago (Fase 2, pedido 5); hoy no existe en el backend'
