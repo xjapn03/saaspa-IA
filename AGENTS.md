@@ -5,7 +5,7 @@
 > **gana este archivo y las ADRs en `docs/adr/`**. Al terminar cada tarea, actualiza la sección
 > [12. Checklist de progreso](#12-checklist-de-progreso) y el [registro de cambios](#13-registro-de-cambios).
 
-Última actualización: 2026-09-23
+Última actualización: 2026-09-24
 
 ---
 
@@ -221,6 +221,23 @@ Resuelto respecto del snapshot inicial de Initializr:
   `Host github-personal` en `~/.ssh/config`. Desde entonces la persona autenticó `gh` con protocolo SSH
   (ver sección 9). **Verificar** con `git ls-remote origin` antes de la primera operación remota.
 
+### Discrepancias verificadas durante T1.0 (2026-09-24)
+
+Validación de los contratos contra `saaspa-backend` (rama `develop`, commit `ce41e487`), leyendo con `gh` en
+solo lectura. Informe completo: `docs/contracts/t1.0-backend-validation.md`. Resumen:
+
+- **No existe** `/api/internal/v1/*`: ningún módulo, controlador ni ruta con `internal` en el backend.
+- **No existe turn token**: el único JWT es el de sesión de usuario (HS256, `JWT_SECRET`, claims
+  `sub`/`email`/`role`, 15m/7d). El ADR 0006 está sin implementar.
+- **No existe `tenantId`**: 0 ocurrencias en `prisma/schema.prisma`; el tenant efectivo es el despliegue.
+- **No existe punto de entrada de chat** ni cliente HTTP hacia este servicio: `iaBot.url`/`iaBot.apiKey`
+  están configurados y nunca se usan.
+- Sí existen y se reutilizarán para leer: `GET /api/services/public…` (paginado, `price` numérico, detalle
+  por `slug`) y `GET /api/bookings/slots?serviceId&date` (un día, instantes ISO UTC, 8–18 con
+  `Date.setHours` en la TZ del contenedor).
+- **Dos claves de servicio distintas**, una por dirección: `IA_BOT_API_KEY` (NestJS → IA) e
+  `INTERNAL_API_KEY` (IA → NestJS). No se unifican.
+
 ---
 
 ## 8. Estructura objetivo y convenciones de código
@@ -423,6 +440,8 @@ Objetivo: dejar el repo coherente y los contratos definidos antes de escribir l�
 - Dataset `eval/customer-agent.v1.jsonl` (10–15 casos) y runner.
 - **Criterio de aceptación:** una consulta por chat web anónimo devuelve el precio correcto obtenido de la herramienta;
   nunca inventa precios; un tema sensible deriva a handoff; los tokens quedan registrados; tests de contrato en verde.
+  Este criterio **E2E** está condicionado a los pedidos 1 a 3 de la sección 11 (turn token, `/api/internal/v1/*` y
+  `POST /api/chat`); el resto de la Fase 1 avanza con WireMock (ver checklist de la sección 12).
 
 ### Fase 2 — Agenda por chat + cliente logueado
 - Herramientas de escritura con confirmación e idempotencia: `crearCita` (queda en `PENDIENTE_PAGO` y devuelve el
@@ -460,10 +479,48 @@ recordatorios/promociones proactivas (requieren consentimiento y plantillas de M
 
 ## 11. Pedidos a otros repos
 
-Contratos **borrador**. Se validan contra el código real de NestJS leyéndolo con `gh` en solo lectura (tarea T1.0)
-y se cierran en `docs/contracts/`.
+Contratos **borrador** validados contra el código real de `saaspa-backend` (rama `develop`, commit `ce41e487`,
+2026-09-24; informe en `docs/contracts/t1.0-backend-validation.md`). Los pedidos van **en orden de dependencia**
+y **nada de esto existe todavía** en el backend.
 
-**`POST /api/v1/chat`** (NestJS → IA)
+### 11.1 Turn token ES256 + guard (bloquea lo demás)
+
+- Par de claves asimétrico **ES256 (P-256, PEM)** con cabecera `kid`; la privada vive en NestJS y la pública se
+  entrega a este servicio (`TURN_TOKEN_PUBLIC_KEY`; en T1.1 se implementa como mapa `kid` → PEM para aceptar dos
+  claves públicas y rotar sin cortar el servicio).
+- Claims mínimos: `iss`, `aud` (`saaspa-ia`), `iat`, `exp` corta (minutos), `jti` = `turnId`, `tenantId`,
+  `conversationId`, `channel`, `agent`, `userId?`, `role?`.
+- Guard dedicado en las rutas internas: autoriza con la identidad **del token**, nunca con parámetros de la
+  petición ni con argumentos generados por el modelo.
+- Este servicio reenvía el turn token tal cual en cada llamada interna.
+
+### 11.2 `/api/internal/v1/*` con `@SkipThrottle`
+
+Contrato: `docs/contracts/internal-api.openapi.yaml`. Autenticación: `X-Internal-Api-Key` con el valor de
+`INTERNAL_API_KEY` + `Authorization: Bearer <turn token>`.
+
+- Fase 1: `GET /services` (paginado, espejo de `/api/services/public`), `GET /services/{id|slug}` y
+  `GET /availability?serviceId&date`.
+- `/availability` debe devolver **offset explícito** y el campo `timezone`: hoy el backend calcula las franjas
+  con `Date.setHours` en la TZ del contenedor (`TZ: America/Bogota` está en `kamerinos-infra`, pero la imagen
+  `node:20-alpine` no instala `tzdata`: hay que confirmar el efecto real).
+- `@SkipThrottle()` o límite propio (el `ThrottlerGuard` global es 100 req/60 s y hoy solo se salta en el
+  webhook de WhatsApp) y criterio de auditoría para las llamadas internas (hoy quedarían con actor nulo).
+- Fase 2: `POST /bookings` con `Idempotency-Key`, `PATCH`/`DELETE /bookings/{id}` y `GET /me/bookings`.
+  Fase 3: reportes. Fase 4: `GET /identity/resolve?waId=` (ADR 0005).
+
+### 11.3 `POST /api/chat` público (chat web)
+
+Contrato: `docs/contracts/web-chat-api.openapi.yaml`.
+
+- Único punto de entrada del canal web (anónimo y logueado): resuelve `tenantId`, `channel`, `agent`, rol e
+  identidad en el servidor, emite el turn token y llama a `POST {IA_BOT_URL}/api/v1/chat`.
+- El cuerpo del frontend solo lleva `message` y `conversationId`; el `conversationId` anónimo es **aleatorio de
+  128 bits** (impredecible) y está atado a la sesión.
+- **Anti-abuso:** throttling por IP y por sesión, longitud máxima de mensaje, tope de mensajes por sesión
+  anónima y **sin PII en logs**.
+
+**`POST /api/v1/chat`** (NestJS → IA) — contrato: `docs/contracts/chat-api.openapi.yaml`
 
 ```json
 {
@@ -492,25 +549,26 @@ Respuesta (borrador):
 }
 ```
 
-Autenticación: cabecera de servicio + **turn token** (ADR 0006). Streaming (SSE) queda para después de la Fase 1.
+Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS → IA) + **turn token** (ADR 0006) en
+`Authorization: Bearer`. Streaming (SSE) queda para después de la Fase 1.
 
-**Endpoints internos que NestJS debe exponer** (`/api/internal/v1/*`, solo red Docker interna, con `INTERNAL_API_KEY`
-y validación del turn token):
+### 11.4 Variables de entorno y claves de servicio
 
-| Fase | Endpoint (borrador) |
-|---|---|
-| 1 | `GET /services`, `GET /services/{id}`, `GET /availability?serviceId&from&to&staffId` |
-| 2 | `POST /bookings` (con `Idempotency-Key`), `PATCH /bookings/{id}`, `DELETE /bookings/{id}`, `GET /me/bookings` |
-| 3 | `GET /reports/sales`, `/reports/top-services`, `/reports/top-products`, `/reports/appointments`, `/reports/low-stock` |
-| 4 | `GET /identity/resolve?waId=` (según ADR 0005) |
+- Son **dos secretos distintos**, uno por dirección, y **no se unifican**: `IA_BOT_API_KEY` (NestJS → IA) e
+  `INTERNAL_API_KEY` (IA → NestJS). Documentar ambos en los `.env.example` de los dos repos.
+- `saaspa-backend` debe añadir `INTERNAL_API_KEY` y la clave privada del turn token
+  (`TURN_TOKEN_PRIVATE_KEY` + `TURN_TOKEN_KID`); ya tiene `IA_BOT_URL` e `IA_BOT_API_KEY` (hoy sin uso).
+- `saaspa-IA` usa `TURN_TOKEN_PUBLIC_KEY`, `INTERNAL_API_KEY` e `IA_BOT_API_KEY`; `LLM_API_KEY`, `BACKEND_URL`,
+  `DATABASE_URL`, `REDIS_URL` e `IA_TENANT_DEFAULT=kamerinos` ya están previstas.
 
-Otros pedidos:
-- **kamerinos-infra:** contenedor `ia-bot`; PostgreSQL con pgvector y usuario con permisos solo sobre el esquema `ia`;
-  variables de entorno (ver abajo).
-- **saaspa-frontend:** el chat web debe hablar con NestJS, no directamente con este servicio.
+### 11.5 Otros repos y contratos
 
-Variables de entorno previstas: `LLM_API_KEY`, `INTERNAL_API_KEY`, `BACKEND_URL`, `DATABASE_URL`, `REDIS_URL`,
-`TURN_TOKEN_SECRET` (o clave pública, según ADR 0006), `IA_TENANT_DEFAULT=kamerinos`.
+- **kamerinos-infra:** contenedor `ia-bot` en la red interna; PostgreSQL con pgvector y usuario con permisos solo
+  sobre el esquema `ia`; variables de entorno de 11.4; confirmar la TZ efectiva del contenedor del backend
+  (`TZ: America/Bogota` está definido, pero la imagen es `node:20-alpine` sin `tzdata`).
+- **saaspa-frontend:** el chat web habla con `POST /api/chat` de NestJS, **nunca** directamente con este servicio.
+- **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.2.0), `internal-api.openapi.yaml` (IA → NestJS, v0.2.0),
+  `web-chat-api.openapi.yaml` (frontend → NestJS, v0.1.0) y `t1.0-backend-validation.md` (informe de T1.0).
 
 ---
 
@@ -528,8 +586,8 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] `gh` autenticado como `xjapn03` (SSH, scopes `repo`, `read:org`, `admin:public_key`, `gist`) y documentado (2026-09-23)
 - [x] `git ls-remote origin` verificado (alias `github-personal` resuelto el 2026-09-23; sin push a `main`)
 - [x] Ramas `main` y `develop` en el remoto; PR de `feature/f0-alineacion` fusionado en `develop` (2026-09-23)
-- [ ] Reglas de GitHub de la sección 9 incorporadas a `develop` (PR `docs/agents-github-workflow`)
-- [ ] `.github/pull_request_template.md` creada
+- [x] Reglas de GitHub de la sección 9 incorporadas a `develop` (PR `docs/agents-github-workflow`, fusionado 2026-09-23)
+- [x] `.github/pull_request_template.md` creada
 - [ ] Protección de ramas configurada por la persona (PR obligatorio, check `verify`, sin push directo)
 - [ ] JDK 21 con `javac` instalado en el equipo (documentado en el README)
 
@@ -551,16 +609,19 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] `./mvnw -B verify` verde (JDK local; temurin 21 en CI) y `/actuator/health` en UP
 
 ### Fase 1 — Cerebro mínimo + chat web anónimo
-- [ ] T1.0 Contratos validados contra `saaspa-backend` (lectura con `gh`)
-- [ ] Verificación de servicio y turn token
+- [x] T1.0 Contratos validados contra `saaspa-backend` (lectura con `gh`; `develop@ce41e487`, 2026-09-24)
+- [ ] Verificación de servicio y turn token (ES256, dos claves públicas por `kid`)
 - [ ] `POST /api/v1/chat` con validación y `ProblemDetail`
 - [ ] Agente CLIENTAS + prompt v1 (es-CO) + memoria con ventana
 - [ ] Cliente HTTP hacia NestJS con timeouts
-- [ ] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad`
+- [ ] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (probadas con WireMock)
 - [ ] Handoff y política de temas sensibles
 - [ ] Registro de mensajes, tool calls y tokens en `ia`
 - [ ] Dataset `eval/customer-agent.v1.jsonl` y runner
 - [ ] Tests: unitarios, contrato (WireMock), Testcontainers Postgres
+- [ ] **(bloqueado) Criterio de aceptación E2E de la Fase 1:** chat web anónimo que devuelve el precio real desde
+      la herramienta. Depende de los pedidos 1 a 3 de la sección 11 (turn token + `/api/internal/v1/*` +
+      `POST /api/chat`); el resto de la Fase 1 avanza con WireMock.
 
 ### Fase 2 — Agenda por chat + cliente logueado
 - [ ] `crearCita`, `reprogramarCita`, `cancelarCita`, `misCitas`
@@ -612,6 +673,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-23 — (nota) — En la Fase 0 se hizo fast-forward local de `main` desde `feat/chat-ia` sin autorización explícita; sin push. Desde ahora `main` solo se toca por PR de release desde `develop`.
 - 2026-09-23 — docs/agents-github-workflow — AGENTS.md: entorno Fedora, `gh` autenticado, permisos y prohibiciones de git/gh, reglas de PR (inglés, sin emojis, plantilla, merge manual), lectura de otros repos, T1.0 — (solo documentación).
 - 2026-09-23 — docs/agents-github-workflow — checklist de entorno actualizado (gh verificado, ramas en el remoto y PR de Fase 0 fusionado), plantilla de PR y nota del bit ejecutable de `mvnw` — (solo documentación).
+- 2026-09-24 — docs/f1-t10-contract-validation — T1.0: contratos validados contra `saaspa-backend` (`develop@ce41e487`, solo lectura con `gh`); informe `docs/contracts/t1.0-backend-validation.md`, contratos v0.2.0 (`chat-api`, `internal-api`) y nuevo borrador `web-chat-api`; pedidos ordenados en la sección 11 y checklist/E2E de la Fase 1 actualizados — verify verde.
 
 ---
 
