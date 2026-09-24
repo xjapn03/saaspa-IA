@@ -1,0 +1,106 @@
+openapi: 3.1.0
+info:
+  title: NestJS Internal API (IA -> NestJS)
+  version: 0.1.0
+  description: >-
+    Contrato BORRADOR de los endpoints que NestJS debe exponer en /api/internal/v1/* para el
+    servicio de IA. Solo red interna Docker. Requiere INTERNAL_API_KEY (transporte) y turn token
+    (identidad). NestJS autoriza con la identidad del token. Todos los endpoints son tenant-scoped.
+servers:
+  - url: http://backend:3001
+security:
+  - internalApiKey: []
+    turnToken: []
+paths:
+  /api/internal/v1/services:
+    get:
+      operationId: listServices
+      summary: Catalogo de servicios activos (Fase 1)
+      parameters:
+        - { name: categoryId, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Lista de servicios }
+        '401': { description: Turn token invalido }
+  /api/internal/v1/services/{id}:
+    get:
+      operationId: getService
+      summary: Detalle de un servicio (Fase 1)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Servicio }
+        '404': { description: No encontrado }
+  /api/internal/v1/availability:
+    get:
+      operationId: getAvailability
+      summary: Disponibilidad de agenda (Fase 1)
+      parameters:
+        - { name: serviceId, in: query, required: true, schema: { type: string } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Franjas disponibles }
+  /api/internal/v1/bookings:
+    post:
+      operationId: createBooking
+      summary: Crea una cita en PENDIENTE_PAGO (Fase 2, escritura)
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Cita creada + deep-link de pago }
+        '409': { description: Slot ocupado }
+  /api/internal/v1/bookings/{id}:
+    patch:
+      operationId: rescheduleBooking
+      summary: Reprograma una cita (Fase 2, escritura)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cita reprogramada }
+    delete:
+      operationId: cancelBooking
+      summary: Cancela una cita (Fase 2, escritura)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cita cancelada }
+  /api/internal/v1/me/bookings:
+    get:
+      operationId: myBookings
+      summary: Citas del cliente autenticado (Fase 2)
+      responses:
+        '200': { description: Citas del cliente }
+  /api/internal/v1/reports/sales:
+    get:
+      operationId: reportSales
+      summary: Ventas por periodo (Fase 3, solo ADMIN)
+      responses:
+        '200': { description: Cifras calculadas por el backend }
+  /api/internal/v1/reports/top-services:
+    get: { operationId: reportTopServices, summary: Servicios mas solicitados (Fase 3, solo ADMIN), responses: { '200': { description: OK } } }
+  /api/internal/v1/reports/top-products:
+    get: { operationId: reportTopProducts, summary: Productos mas vendidos (Fase 3, solo ADMIN), responses: { '200': { description: OK } } }
+  /api/internal/v1/reports/appointments:
+    get: { operationId: reportAppointments, summary: Citas del dia (Fase 3, ADMIN/EMPLEADO), responses: { '200': { description: OK } } }
+  /api/internal/v1/reports/low-stock:
+    get: { operationId: reportLowStock, summary: Stock bajo (Fase 3, solo ADMIN), responses: { '200': { description: OK } } }
+  /api/internal/v1/identity/resolve:
+    get:
+      operationId: resolveIdentity
+      summary: Resuelve identidad por waId/telefono (Fase 4, solo WhatsApp)
+      parameters:
+        - { name: waId, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Identidad resuelta }
+components:
+  securitySchemes:
+    internalApiKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Api-Key
+    turnToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

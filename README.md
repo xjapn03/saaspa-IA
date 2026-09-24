@@ -57,22 +57,28 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 
 | Capa | Tecnología |
 |---|---|
-| Runtime | Java 21+ · Spring Boot 4 |
+| Runtime | Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1 |
 | IA | Spring AI 2.0 (`ChatClient`, Advisors, Chat Memory, RAG, Tool Calling) |
-| LLM | Proveedor externo intercambiable detrás de Spring AI |
-| Memoria | Redis |
+| LLM | DeepSeek (`deepseek-flash`, soporta tool calling) detrás de `ChatClient` |
+| Memoria | PostgreSQL, esquema `ia`, vía JDBC (`initialize-schema: never`); ventana de 10 |
 | RAG | PostgreSQL + pgvector (mismo motor que el backend) |
 | Evaluación | Dataset en `eval/` + LLM-as-a-Judge en CI |
 
-## Estructura del repositorio (planeada)
+## Estructura del repositorio
 
 ```text
 saaspa-IA/
-├── backend/          # Spring Boot + Spring AI
-├── docs/adr/         # decisiones de arquitectura
-├── eval/             # datasets de evaluación de los agentes
-├── docker-compose.yml
-└── AI_WhatsApp_SaaS_Roadmap_2026.md
+├── AGENTS.md                    # fuente de verdad
+├── pom.xml  mvnw  mvnw.cmd
+├── docker-compose.yml           # infra de desarrollo (pgvector pg15 + redis)
+├── .env.example
+├── docs/
+│   ├── adr/                     # 0001..000N
+│   └── contracts/               # chat-api / internal-api (OpenAPI)
+└── src/
+    ├── main/java/com/juanp/saaspa/ia/   # código (raíz del proyecto Maven)
+    ├── main/resources/                  # application.yml + db/migration (Flyway)
+    └── test/java/com/juanp/saaspa/ia/
 ```
 
 ## Roadmap resumido
@@ -94,7 +100,11 @@ Cada decisión relevante está documentada en `docs/adr/`. Resumen:
 - **NestJS como gateway de canales y ejecutor de herramientas** (dueño de auth, roles y lógica).
 - **Multi-tenant híbrido** (aislamiento de RAG y base de datos).
 - **Herramientas vía API HTTP interno** autenticado, no consultas directas a la BD desde Java.
-- **Resolución de identidad del cliente por teléfono** (`waId`/teléfono → `User`).
+- **Resolución de identidad del cliente por teléfono** (`waId`/teléfono → `User`), solo WhatsApp.
+- **Turn token firmado (ES256/EdDSA)**: NestJS firma; este servicio solo verifica con la clave
+  pública y lo reenvía en cada llamada al backend (ADR 0006).
+- **Memoria JDBC en el esquema `ia`** con Flyway, sin Redis Stack (ADR 0007).
+- **Escritura detrás de feature flag + confirmación explícita + idempotencia** (ADR 0008).
 
 ## Referencias
 
