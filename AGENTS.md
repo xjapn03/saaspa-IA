@@ -192,6 +192,10 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
   públicas EC hay que usar `withJwkSource(...)` con un `JWKSet` de `ECKey`
   (`new ECKey.Builder(Curve.P_256, ecPublicKey).keyID(kid)`) y restringir el algoritmo con
   `jwsAlgorithm(SignatureAlgorithm.ES256)`. Comprobado contra spring-security-oauth2-jose 7.1.1.
+- **Codificación de rutas con `RestClient`:** `UriBuilder.path(valor)` trata el valor como plantilla,
+  así que un segmento ya codificado se **codifica dos veces** (`%20` → `%2520`). Usar plantillas con
+  variables (`/services/{servicio}` + `build(variables)`), que expanden y codifican una sola vez;
+  `BackendClient` ya expone esa sobrecarga.
 
 ---
 
@@ -627,7 +631,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [ ] `POST /api/v1/chat` con validación y `ProblemDetail`
 - [ ] Agente CLIENTAS + prompt v1 (es-CO) + memoria con ventana
 - [x] Cliente HTTP hacia NestJS con timeouts (`RestClient`, clave de servicio, turn token reenviado, mapeo de errores; probado con WireMock — T1.2, 2026-09-24)
-- [ ] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (probadas con WireMock)
+- [x] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (`@Tool` en español, precios en COP preformateados, `ok=false` sin excepción — T1.3, 2026-09-24)
 - [ ] Handoff y política de temas sensibles
 - [ ] Registro de mensajes, tool calls y tokens en `ia`
 - [ ] Dataset `eval/customer-agent.v1.jsonl` y runner
@@ -689,6 +693,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-24 — docs/f1-t10-contract-validation — T1.0: contratos validados contra `saaspa-backend` (`develop@ce41e487`, solo lectura con `gh`); informe `docs/contracts/t1.0-backend-validation.md`, contratos v0.2.0 (`chat-api`, `internal-api`) y nuevo borrador `web-chat-api`; pedidos ordenados en la sección 11 y checklist/E2E de la Fase 1 actualizados — verify verde.
 - 2026-09-24 — feature/f1-backend-http-client — T1.2: cliente HTTP hacia NestJS (`RestClient` con `HttpClientSettings` de Boot 4.1, timeouts `saaspa.backend.*`, cabecera de servicio `X-Internal-Api-Key`, reenvío del turn token, `BackendException`/`BackendUnavailableException`) + 7 tests de contrato con WireMock — verify verde (8 tests).
 - 2026-09-24 — feature/f1-turn-token-verification — T1.1: verificación ES256 (P-256) del turn token con dos claves públicas por `kid` (`withJwkSource`, `jwsAlgorithm(ES256)`, audiencia e issuer opcional), clave de servicio de entrada con comparación en tiempo constante, identidad del turno accesible por `CurrentTurnToken` y 401 con `ProblemDetail`; dependencia `spring-boot-starter-security-oauth2-resource-server`; 24 tests nuevos (decoder, converter, clave de servicio y cadena completa con MockMvc) — verify verde (32 tests).
+- 2026-09-24 — feature/f1-read-tools — T1.3: herramientas de lectura del agente CLIENTAS (`listarServicios`, `consultarServicio`, `consultarDisponibilidad`) con `@Tool` en español, DTO de cable mínimos, precios formateados en COP, validación de fechas en la zona horaria del tenant (R13) y fallos como `ok=false` sin excepción (R11); `BackendClient` gana la sobrecarga con plantilla de ruta (evita la doble codificación); 10 tests nuevos con WireMock — verify verde (42 tests).
 
 ---
 
