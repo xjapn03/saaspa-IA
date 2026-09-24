@@ -613,7 +613,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [ ] Verificación de servicio y turn token (ES256, dos claves públicas por `kid`)
 - [ ] `POST /api/v1/chat` con validación y `ProblemDetail`
 - [ ] Agente CLIENTAS + prompt v1 (es-CO) + memoria con ventana
-- [ ] Cliente HTTP hacia NestJS con timeouts
+- [x] Cliente HTTP hacia NestJS con timeouts (`RestClient`, clave de servicio, turn token reenviado, mapeo de errores; probado con WireMock — T1.2, 2026-09-24)
 - [ ] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (probadas con WireMock)
 - [ ] Handoff y política de temas sensibles
 - [ ] Registro de mensajes, tool calls y tokens en `ia`
@@ -674,6 +674,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-23 — docs/agents-github-workflow — AGENTS.md: entorno Fedora, `gh` autenticado, permisos y prohibiciones de git/gh, reglas de PR (inglés, sin emojis, plantilla, merge manual), lectura de otros repos, T1.0 — (solo documentación).
 - 2026-09-23 — docs/agents-github-workflow — checklist de entorno actualizado (gh verificado, ramas en el remoto y PR de Fase 0 fusionado), plantilla de PR y nota del bit ejecutable de `mvnw` — (solo documentación).
 - 2026-09-24 — docs/f1-t10-contract-validation — T1.0: contratos validados contra `saaspa-backend` (`develop@ce41e487`, solo lectura con `gh`); informe `docs/contracts/t1.0-backend-validation.md`, contratos v0.2.0 (`chat-api`, `internal-api`) y nuevo borrador `web-chat-api`; pedidos ordenados en la sección 11 y checklist/E2E de la Fase 1 actualizados — verify verde.
+- 2026-09-24 — feature/f1-backend-http-client — T1.2: cliente HTTP hacia NestJS (`RestClient` con `HttpClientSettings` de Boot 4.1, timeouts `saaspa.backend.*`, cabecera de servicio `X-Internal-Api-Key`, reenvío del turn token, `BackendException`/`BackendUnavailableException`) + 7 tests de contrato con WireMock — verify verde (8 tests).
 
 ---
 
