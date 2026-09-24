@@ -34,63 +34,63 @@ import tools.jackson.databind.ObjectMapper;
 @EnableConfigurationProperties({ TurnTokenProperties.class, ChatApiProperties.class })
 public class SecurityConfig {
 
-    @Bean
-    @Order(1)
-    public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.securityMatcher("/actuator/**")
-                .csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll());
-        return http.build();
-    }
+	@Bean
+	@Order(1)
+	public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http) throws Exception {
+		http.securityMatcher("/actuator/**")
+				.csrf(AbstractHttpConfigurer::disable)
+				.authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll());
+		return http.build();
+	}
 
-    @Bean
-    @Order(2)
-    public SecurityFilterChain chatApiSecurityFilterChain(HttpSecurity http, JwtDecoder turnTokenDecoder,
-            TurnTokenAuthenticationConverter turnTokenAuthenticationConverter, ServiceKeyVerifier serviceKeyVerifier,
-            ProblemDetailSecurityHandler securityHandler) throws Exception {
-        http.securityMatcher("/api/**")
-                .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
-                .oauth2ResourceServer(resourceServer -> resourceServer
-                        .authenticationEntryPoint(securityHandler)
-                        .jwt(jwt -> jwt.decoder(turnTokenDecoder)
-                                .jwtAuthenticationConverter(turnTokenAuthenticationConverter)))
-                .exceptionHandling(exceptionHandling -> exceptionHandling
-                        .authenticationEntryPoint(securityHandler)
-                        .accessDeniedHandler(securityHandler))
-                .addFilterBefore(new ServiceKeyAuthenticationFilter(serviceKeyVerifier, securityHandler),
-                        BearerTokenAuthenticationFilter.class);
-        return http.build();
-    }
+	@Bean
+	@Order(2)
+	public SecurityFilterChain chatApiSecurityFilterChain(HttpSecurity http, JwtDecoder turnTokenDecoder,
+			TurnTokenAuthenticationConverter turnTokenAuthenticationConverter, ServiceKeyVerifier serviceKeyVerifier,
+			ProblemDetailSecurityHandler securityHandler) throws Exception {
+		http.securityMatcher("/api/**")
+				.csrf(AbstractHttpConfigurer::disable)
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
+				.oauth2ResourceServer(resourceServer -> resourceServer
+						.authenticationEntryPoint(securityHandler)
+						.jwt(jwt -> jwt.decoder(turnTokenDecoder)
+								.jwtAuthenticationConverter(turnTokenAuthenticationConverter)))
+				.exceptionHandling(exceptionHandling -> exceptionHandling
+						.authenticationEntryPoint(securityHandler)
+						.accessDeniedHandler(securityHandler))
+				.addFilterBefore(new ServiceKeyAuthenticationFilter(serviceKeyVerifier, securityHandler),
+						BearerTokenAuthenticationFilter.class);
+		return http.build();
+	}
 
-    @Bean
-    @Order(3)
-    public SecurityFilterChain fallbackSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(authorize -> authorize
-                        .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.FORWARD).permitAll()
-                        .anyRequest().denyAll());
-        return http.build();
-    }
+	@Bean
+	@Order(3)
+	public SecurityFilterChain fallbackSecurityFilterChain(HttpSecurity http) throws Exception {
+		http.csrf(AbstractHttpConfigurer::disable)
+				.authorizeHttpRequests(authorize -> authorize
+						.dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.FORWARD).permitAll()
+						.anyRequest().denyAll());
+		return http.build();
+	}
 
-    @Bean
-    public JwtDecoder turnTokenDecoder(TurnTokenProperties turnTokenProperties) {
-        return TurnTokenDecoderFactory.create(turnTokenProperties);
-    }
+	@Bean
+	public JwtDecoder turnTokenDecoder(TurnTokenProperties turnTokenProperties) {
+		return TurnTokenDecoderFactory.create(turnTokenProperties);
+	}
 
-    @Bean
-    public TurnTokenAuthenticationConverter turnTokenAuthenticationConverter() {
-        return new TurnTokenAuthenticationConverter();
-    }
+	@Bean
+	public TurnTokenAuthenticationConverter turnTokenAuthenticationConverter() {
+		return new TurnTokenAuthenticationConverter();
+	}
 
-    @Bean
-    public ServiceKeyVerifier serviceKeyVerifier(ChatApiProperties chatApiProperties) {
-        return new ServiceKeyVerifier(chatApiProperties.serviceKey());
-    }
+	@Bean
+	public ServiceKeyVerifier serviceKeyVerifier(ChatApiProperties chatApiProperties) {
+		return new ServiceKeyVerifier(chatApiProperties.serviceKey());
+	}
 
-    @Bean
-    public ProblemDetailSecurityHandler problemDetailSecurityHandler(ObjectMapper objectMapper) {
-        return new ProblemDetailSecurityHandler(objectMapper);
-    }
+	@Bean
+	public ProblemDetailSecurityHandler problemDetailSecurityHandler(ObjectMapper objectMapper) {
+		return new ProblemDetailSecurityHandler(objectMapper);
+	}
 }

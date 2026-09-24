@@ -85,6 +85,20 @@ class BackendClientWireMockTest {
 	}
 
 	@Test
+	@DisplayName("expande y codifica las variables de ruta sin doble codificacion")
+	void expandsPathVariables() {
+		String encodedPath = SERVICES_PATH + "/Masaje%20relajante%20%C3%B1";
+		backend.stubFor(get(urlPathEqualTo(encodedPath)).willReturn(okJson(PAGE_JSON)));
+
+		withBackend(backend.baseUrl(), Duration.ofSeconds(2)).run(context -> {
+			context.getBean(BackendClient.class).get(SERVICES_PATH + "/{servicio}",
+					Map.of("servicio", "Masaje relajante ñ"), Map.of(), "turn-token-123", Page.class);
+
+			backend.verify(getRequestedFor(urlPathEqualTo(encodedPath)));
+		});
+	}
+
+	@Test
 	@DisplayName("sin turn token no se envia la cabecera Authorization")
 	void omitsAuthorizationWithoutTurnToken() {
 		backend.stubFor(get(urlPathEqualTo(SERVICES_PATH)).willReturn(okJson(PAGE_JSON)));

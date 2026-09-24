@@ -46,6 +46,8 @@ logging:
 saaspa:
   tenant:
     default: ${IA_TENANT_DEFAULT:kamerinos}
+    # Zona horaria del negocio: fechas relativas y horas de agenda (R13).
+    timezone: ${IA_TENANT_TIMEZONE:America/Bogota}
   backend:
     base-url: ${BACKEND_URL:http://localhost:3001}
     internal-api-key: ${INTERNAL_API_KEY:}

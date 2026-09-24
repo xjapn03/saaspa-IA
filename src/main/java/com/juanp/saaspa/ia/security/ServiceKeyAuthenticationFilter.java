@@ -16,24 +16,24 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 public class ServiceKeyAuthenticationFilter extends OncePerRequestFilter {
 
-    private final ServiceKeyVerifier verifier;
+	private final ServiceKeyVerifier verifier;
 
-    private final ProblemDetailSecurityHandler handler;
+	private final ProblemDetailSecurityHandler handler;
 
-    public ServiceKeyAuthenticationFilter(ServiceKeyVerifier verifier, ProblemDetailSecurityHandler handler) {
-        this.verifier = verifier;
-        this.handler = handler;
-    }
+	public ServiceKeyAuthenticationFilter(ServiceKeyVerifier verifier, ProblemDetailSecurityHandler handler) {
+		this.verifier = verifier;
+		this.handler = handler;
+	}
 
-    @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
-        if (!this.verifier.isValid(request.getHeader(ServiceKeyVerifier.HEADER))) {
-            this.handler.unauthorized(response, this.verifier.isConfigured()
-                    ? "Clave de servicio ausente o invalida"
-                    : "El servicio no tiene configurada la clave de servicio de entrada");
-            return;
-        }
-        filterChain.doFilter(request, response);
-    }
+	@Override
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+			throws ServletException, IOException {
+		if (!this.verifier.isValid(request.getHeader(ServiceKeyVerifier.HEADER))) {
+			this.handler.unauthorized(response, this.verifier.isConfigured()
+					? "Clave de servicio ausente o invalida"
+					: "El servicio no tiene configurada la clave de servicio de entrada");
+			return;
+		}
+		filterChain.doFilter(request, response);
+	}
 }

@@ -69,7 +69,11 @@ paths:
         el backend calcula las franjas con Date.setHours en la zona horaria del contenedor (riesgo
         pendiente, ver docs/contracts/t1.0-backend-validation.md seccion 6).
       parameters:
-        - { name: serviceId, in: query, required: true, schema: { type: string } }
+        - name: serviceId
+          in: query
+          required: true
+          schema: { type: string }
+          description: UUID del servicio o su slug
         - name: date
           in: query
           required: true

@@ -15,24 +15,24 @@ import org.springframework.security.core.context.SecurityContextHolder;
  */
 public final class CurrentTurnToken {
 
-    private CurrentTurnToken() {
-    }
+	private CurrentTurnToken() {
+	}
 
-    /** @return el turn token del contexto, si la peticion traia uno verificado */
-    public static Optional<TurnToken> find() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof TurnToken turnToken) {
-            return Optional.of(turnToken);
-        }
-        return Optional.empty();
-    }
+	/** @return el turn token del contexto, si la peticion traia uno verificado */
+	public static Optional<TurnToken> find() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (authentication != null && authentication.getPrincipal() instanceof TurnToken turnToken) {
+			return Optional.of(turnToken);
+		}
+		return Optional.empty();
+	}
 
-    /**
-     * @return el turn token del contexto
-     * @throws AuthenticationCredentialsNotFoundException si no hay ninguno verificado
-     */
-    public static TurnToken require() {
-        return find().orElseThrow(
-                () -> new AuthenticationCredentialsNotFoundException("No hay turn token verificado en el contexto"));
-    }
+	/**
+	 * @return el turn token del contexto
+	 * @throws AuthenticationCredentialsNotFoundException si no hay ninguno verificado
+	 */
+	public static TurnToken require() {
+		return find().orElseThrow(
+				() -> new AuthenticationCredentialsNotFoundException("No hay turn token verificado en el contexto"));
+	}
 }
