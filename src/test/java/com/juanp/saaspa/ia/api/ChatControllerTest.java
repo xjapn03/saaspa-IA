@@ -21,6 +21,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -36,6 +37,7 @@ import com.juanp.saaspa.ia.security.SecurityConfig;
 import com.juanp.saaspa.ia.security.ServiceKeyVerifier;
 import com.juanp.saaspa.ia.security.TestTurnTokens;
 import com.juanp.saaspa.ia.security.TurnToken;
+import com.juanp.saaspa.ia.usage.TurnLogService;
 
 /**
  * Contrato de {@code POST /api/v1/chat} (T1.4): validacion del cuerpo, contraste con el turn token,
@@ -68,6 +70,9 @@ class ChatControllerTest {
 	@MockitoBean
 	private CustomerAgent customerAgent;
 
+	@MockitoBean
+	private TurnLogService turnLogService;
+
 	@Test
 	@DisplayName("responde el turno del agente con reply, handoff y uso de tokens")
 	void returnsAgentReply() throws Exception {
@@ -91,6 +96,19 @@ class ChatControllerTest {
 				.andExpect(jsonPath("$.sources").isEmpty());
 
 		then(this.customerAgent).should().reply(any(TurnToken.class), eq("Cuanto cuesta un masaje?"));
+
+		ArgumentCaptor<TurnLogService.TurnLog> turnLog = ArgumentCaptor.forClass(TurnLogService.TurnLog.class);
+		then(this.turnLogService).should().record(turnLog.capture());
+		assertThat(turnLog.getValue().turnId()).isEqualTo(TURN_ID);
+		assertThat(turnLog.getValue().tenantId()).isEqualTo("kamerinos");
+		assertThat(turnLog.getValue().conversationId()).isEqualTo("conv-1");
+		assertThat(turnLog.getValue().channel()).isEqualTo("WEB_WIDGET");
+		assertThat(turnLog.getValue().agent()).isEqualTo("CLIENTAS");
+		assertThat(turnLog.getValue().promptVersion()).isEqualTo("customer-agent.v1");
+		assertThat(turnLog.getValue().model()).isEqualTo("deepseek-flash");
+		assertThat(turnLog.getValue().tokensIn()).isEqualTo(1200);
+		assertThat(turnLog.getValue().tokensOut()).isEqualTo(80);
+		assertThat(turnLog.getValue().latencyMs()).isGreaterThanOrEqualTo(0);
 	}
 
 	@Test
@@ -106,6 +124,7 @@ class ChatControllerTest {
 				.andExpect(jsonPath("$.detail").value(containsString("tenantId")));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
+		then(this.turnLogService).shouldHaveNoInteractions();
 	}
 
 	@Test

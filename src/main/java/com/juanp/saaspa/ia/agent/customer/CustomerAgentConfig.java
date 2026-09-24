@@ -1,11 +1,15 @@
 package com.juanp.saaspa.ia.agent.customer;
 
+import java.util.Arrays;
+
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,6 +17,10 @@ import org.springframework.context.annotation.Configuration;
 import com.juanp.saaspa.ia.config.AgentProperties;
 import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.tools.CustomerTools;
+import com.juanp.saaspa.ia.usage.LoggingToolCallback;
+import com.juanp.saaspa.ia.usage.ToolCallLogger;
+
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Cableado del agente CLIENTAS.
@@ -46,8 +54,11 @@ public class CustomerAgentConfig {
 
 	@Bean
 	public ChatClient customerChatClient(ChatClient.Builder chatClientBuilder, CustomerTools customerTools,
-			MessageChatMemoryAdvisor chatMemoryAdvisor) {
-		return chatClientBuilder.defaultTools(customerTools).defaultAdvisors(chatMemoryAdvisor).build();
+			MessageChatMemoryAdvisor chatMemoryAdvisor, ToolCallLogger toolCallLogger, ObjectMapper objectMapper) {
+		ToolCallback[] toolCallbacks = Arrays.stream(ToolCallbacks.from(customerTools))
+				.map(callback -> new LoggingToolCallback(callback, toolCallLogger, objectMapper))
+				.toArray(ToolCallback[]::new);
+		return chatClientBuilder.defaultToolCallbacks(toolCallbacks).defaultAdvisors(chatMemoryAdvisor).build();
 	}
 
 	@Bean

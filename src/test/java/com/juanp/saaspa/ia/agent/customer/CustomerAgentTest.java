@@ -1,6 +1,7 @@
 package com.juanp.saaspa.ia.agent.customer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -30,6 +31,10 @@ import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.tools.CustomerTools;
 import com.juanp.saaspa.ia.tools.ToolsConfig;
+import com.juanp.saaspa.ia.usage.ToolCallLogger;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Comportamiento del agente CLIENTAS (T1.5) con un {@code ChatModel} doble: prompt, herramientas,
@@ -50,6 +55,8 @@ class CustomerAgentTest {
 				.withBean(ChatModel.class, () -> this.chatModel)
 				.withBean(ChatClient.Builder.class, () -> ChatClient.builder(this.chatModel))
 				.withBean(ChatMemoryRepository.class, InMemoryChatMemoryRepository::new)
+				.withBean(ToolCallLogger.class, () -> mock(ToolCallLogger.class))
+				.withBean(ObjectMapper.class, () -> JsonMapper.builder().build())
 				.withPropertyValues("saaspa.backend.base-url=http://localhost:3001",
 						"saaspa.backend.internal-api-key=test-key", "saaspa.tenant.display-name=Kamerinos SPA Bogota",
 						"saaspa.tenant.timezone=America/Bogota", "saaspa.agent.memory-window=" + memoryWindow);
