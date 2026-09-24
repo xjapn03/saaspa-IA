@@ -49,6 +49,9 @@ saaspa:
   backend:
     base-url: ${BACKEND_URL:http://localhost:3001}
     internal-api-key: ${INTERNAL_API_KEY:}
+    # Timeouts explicitos del cliente HTTP hacia NestJS (AGENTS.md, seccion 8).
+    connect-timeout: ${BACKEND_CONNECT_TIMEOUT:1s}
+    read-timeout: ${BACKEND_READ_TIMEOUT:5s}
   turn-token:
     # Verificacion asimetrica: el servicio solo recibe la clave publica (ADR 0006).
     public-key: ${TURN_TOKEN_PUBLIC_KEY:}
