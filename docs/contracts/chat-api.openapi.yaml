@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.2.0
+  version: 0.3.0
   description: >-
-    Contrato BORRADOR v0.2.0, revisado contra saaspa-backend@develop (ce41e487) en la tarea T1.0
+    Contrato BORRADOR v0.3.0. La v0.2.0 se reviso contra saaspa-backend@develop (ce41e487) en la tarea T1.0
     (informe: docs/contracts/t1.0-backend-validation.md). NestJS sigue siendo el unico punto de
     entrada de canales: resuelve tenant, identidad y rol, y llama a este servicio.
     Estado en el backend: el emisor del turn token NO existe todavia (hoy solo hay JWT de sesion
@@ -15,6 +15,9 @@ info:
     Reglas: el tenantId del cuerpo se valida contra la lista permitida de este servicio
     (IA_TENANT_DEFAULT); la identidad real es la del turn token y los campos del cuerpo nunca
     sustituyen a sus claims.
+    Implementado en la Fase 1 (v0.3.0): el servicio contrasta tenantId, conversationId, channel,
+    agent e identidad del cuerpo con los claims del turn token y responde 400 si no coinciden
+    (regla R1); el agente ADMIN todavia no existe y responde 501.
 servers:
   - url: http://localhost:8000
 paths:
@@ -44,6 +47,21 @@ paths:
           $ref: '#/components/responses/Problem'
         '403':
           $ref: '#/components/responses/Problem'
+        '501':
+          description: >-
+            El agente pedido no esta implementado en esta fase (Fase 1: solo CLIENTAS; el agente
+            ADMIN llega en la Fase 3)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: >-
+            El backend NestJS no respondio o devolvio un error al ejecutar una herramienta
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
 components:
   securitySchemes:
     serviceApiKey:
@@ -94,7 +112,7 @@ components:
           type: object
           required: [text]
           properties:
-            text: { type: string }
+            text: { type: string, maxLength: 2000 }
         locale: { type: string, example: es-CO }
         timezone: { type: string, example: America/Bogota }
         now: { type: string, format: date-time }
