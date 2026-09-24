@@ -1,4 +1,4 @@
-package com.juanp.aiagentplatform;
+package com.juanp.saaspa.ia;
 
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -10,22 +10,23 @@ import org.testcontainers.utility.DockerImageName;
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
 
+	// pgvector/pgvector:pg15 alineado con el backend (PostgreSQL 15).
+	private static final DockerImageName POSTGRES_IMAGE =
+			DockerImageName.parse("pgvector/pgvector:pg15").asCompatibleSubstituteFor("postgres");
+
+	// Redis estandar (la memoria de chat es JDBC; no se requiere Redis Stack).
+	private static final DockerImageName REDIS_IMAGE = DockerImageName.parse("redis:7-alpine");
+
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer postgresContainer() {
-		return new PostgreSQLContainer(DockerImageName.parse("postgres:latest"));
+		return new PostgreSQLContainer(POSTGRES_IMAGE);
 	}
 
 	@Bean
 	@ServiceConnection(name = "redis")
 	GenericContainer<?> redisContainer() {
-		return new GenericContainer<>(DockerImageName.parse("redis:latest")).withExposedPorts(6379);
-	}
-
-	@Bean
-	@ServiceConnection(name = "redis")
-	GenericContainer<?> redisStackContainer() {
-		return new GenericContainer<>(DockerImageName.parse("redis/redis-stack:latest")).withExposedPorts(6379);
+		return new GenericContainer<>(REDIS_IMAGE).withExposedPorts(6379);
 	}
 
 }

@@ -1,13 +1,13 @@
-package com.juanp.aiagentplatform;
+package com.juanp.saaspa.ia;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class AiAgentPlatformApplication {
+public class SaaspaIaApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(AiAgentPlatformApplication.class, args);
+		SpringApplication.run(SaaspaIaApplication.class, args);
 	}
 
 }
