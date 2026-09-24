@@ -8,7 +8,7 @@ package com.juanp.saaspa.ia.backend;
  */
 public class BackendUnavailableException extends BackendException {
 
-	BackendUnavailableException(String path, Throwable cause) {
+	public BackendUnavailableException(String path, Throwable cause) {
 		super(
 				"No se pudo llamar al backend (%s): %s".formatted(path, cause.getClass().getSimpleName()),
 				null,

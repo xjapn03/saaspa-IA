@@ -25,13 +25,15 @@ import com.nimbusds.jwt.SignedJWT;
  * Utilidades de test: par de claves EC P-256 y firma de turn tokens tal como los emitira NestJS
  * (ES256 con {@code kid} en la cabecera). Se generan en memoria: no hay material de clave en el
  * repositorio.
+ *
+ * <p>Es {@code public} porque la usan los tests de varios paquetes (security y api).
  */
-final class TestTurnTokens {
+public final class TestTurnTokens {
 
 	private TestTurnTokens() {
 	}
 
-	static KeyPair generateKeyPair() {
+	public static KeyPair generateKeyPair() {
 		try {
 			KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
 			generator.initialize(new ECGenParameterSpec("secp256r1"));
@@ -43,18 +45,18 @@ final class TestTurnTokens {
 	}
 
 	/** Clave publica en PEM (formato SubjectPublicKeyInfo). */
-	static String pem(PublicKey publicKey) {
+	public static String pem(PublicKey publicKey) {
 		return "-----BEGIN PUBLIC KEY-----\n" + Base64.getMimeEncoder().encodeToString(publicKey.getEncoded())
 				+ "\n-----END PUBLIC KEY-----";
 	}
 
 	/** Clave publica en base64 del PEM (una sola linea, apta para variables de entorno). */
-	static String base64Pem(PublicKey publicKey) {
+	public static String base64Pem(PublicKey publicKey) {
 		return Base64.getEncoder().encodeToString(pem(publicKey).getBytes(StandardCharsets.UTF_8));
 	}
 
 	/** Claims de un turno valido de widget web anonimo. */
-	static Map<String, Object> defaultClaims() {
+	public static Map<String, Object> defaultClaims() {
 		Map<String, Object> claims = new LinkedHashMap<>();
 		claims.put("iss", "saaspa-backend");
 		claims.put("aud", List.of("saaspa-ia"));
@@ -66,11 +68,11 @@ final class TestTurnTokens {
 		return claims;
 	}
 
-	static String signValid(KeyPair keyPair, String kid, Map<String, Object> claims) {
+	public static String signValid(KeyPair keyPair, String kid, Map<String, Object> claims) {
 		return sign(keyPair.getPrivate(), kid, Instant.now().plusSeconds(300), claims);
 	}
 
-	static String sign(PrivateKey privateKey, String kid, Instant expiresAt, Map<String, Object> claims) {
+	public static String sign(PrivateKey privateKey, String kid, Instant expiresAt, Map<String, Object> claims) {
 		try {
 			SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(kid).build(),
 					claims(claims, expiresAt));
@@ -83,7 +85,7 @@ final class TestTurnTokens {
 	}
 
 	/** Token firmado con HS256 (ataque de confusion de algoritmo). */
-	static String signHs256(Map<String, Object> claims, String secret) {
+	public static String signHs256(Map<String, Object> claims, String secret) {
 		try {
 			SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256).build(),
 					claims(claims, Instant.now().plusSeconds(300)));
