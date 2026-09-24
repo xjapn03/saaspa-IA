@@ -13,26 +13,26 @@ import org.springframework.security.core.GrantedAuthority;
  */
 public class TurnTokenAuthentication extends AbstractAuthenticationToken {
 
-    private final transient TurnToken turnToken;
+	private final transient TurnToken turnToken;
 
-    public TurnTokenAuthentication(TurnToken turnToken) {
-        super(List.<GrantedAuthority>of());
-        this.turnToken = turnToken;
-        setAuthenticated(true);
-    }
+	public TurnTokenAuthentication(TurnToken turnToken) {
+		super(List.<GrantedAuthority>of());
+		this.turnToken = turnToken;
+		setAuthenticated(true);
+	}
 
-    @Override
-    public Object getCredentials() {
-        return this.turnToken.rawToken();
-    }
+	@Override
+	public Object getCredentials() {
+		return this.turnToken.rawToken();
+	}
 
-    @Override
-    public Object getPrincipal() {
-        return this.turnToken;
-    }
+	@Override
+	public Object getPrincipal() {
+		return this.turnToken;
+	}
 
-    @Override
-    public String getName() {
-        return this.turnToken.userId() != null ? this.turnToken.userId() : this.turnToken.conversationId();
-    }
+	@Override
+	public String getName() {
+		return this.turnToken.userId() != null ? this.turnToken.userId() : this.turnToken.conversationId();
+	}
 }

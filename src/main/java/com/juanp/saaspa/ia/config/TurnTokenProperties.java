@@ -22,23 +22,23 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  */
 @ConfigurationProperties("saaspa.turn-token")
 public record TurnTokenProperties(
-        @DefaultValue("saaspa-ia") String audience,
-        @DefaultValue("") String issuer,
-        @DefaultValue List<TurnTokenKey> keys) {
+		@DefaultValue("saaspa-ia") String audience,
+		@DefaultValue("") String issuer,
+		@DefaultValue List<TurnTokenKey> keys) {
 
-    /**
-     * Clave publica aceptada para verificar turn tokens.
-     *
-     * @param kid identificador de la clave (cabecera {@code kid} del JWT)
-     * @param publicKey clave publica EC en base64 o PEM
-     */
-    public record TurnTokenKey(@DefaultValue("") String kid, @DefaultValue("") String publicKey) {
+	/**
+	 * Clave publica aceptada para verificar turn tokens.
+	 *
+	 * @param kid identificador de la clave (cabecera {@code kid} del JWT)
+	 * @param publicKey clave publica EC en base64 o PEM
+	 */
+	public record TurnTokenKey(@DefaultValue("") String kid, @DefaultValue("") String publicKey) {
 
-        /**
-         * @return {@code true} si la entrada no aporta nada y debe ignorarse
-         */
-        public boolean isEmpty() {
-            return this.kid.isBlank() || this.publicKey.isBlank();
-        }
-    }
+		/**
+		 * @return {@code true} si la entrada no aporta nada y debe ignorarse
+		 */
+		public boolean isEmpty() {
+			return this.kid.isBlank() || this.publicKey.isBlank();
+		}
+	}
 }

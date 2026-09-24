@@ -45,98 +45,98 @@ import com.juanp.saaspa.ia.config.TurnTokenProperties;
  */
 public final class TurnTokenDecoderFactory {
 
-    private static final Logger log = LoggerFactory.getLogger(TurnTokenDecoderFactory.class);
+	private static final Logger log = LoggerFactory.getLogger(TurnTokenDecoderFactory.class);
 
-    static final String AUDIENCE_CLAIM = "aud";
+	static final String AUDIENCE_CLAIM = "aud";
 
-    static final String ISSUER_CLAIM = "iss";
+	static final String ISSUER_CLAIM = "iss";
 
-    private static final String PEM_MARKER = "-----BEGIN";
+	private static final String PEM_MARKER = "-----BEGIN";
 
-    private TurnTokenDecoderFactory() {
-    }
+	private TurnTokenDecoderFactory() {
+	}
 
-    /**
-     * @param properties configuracion de claves, audiencia e issuer
-     * @return verificador de turn tokens listo para el resource server
-     */
-    public static JwtDecoder create(TurnTokenProperties properties) {
-        List<JWK> jwks = parseKeys(properties.keys());
-        if (jwks.isEmpty()) {
-            log.warn("No hay claves publicas de turn token configuradas: se rechazaran todas las peticiones de chat (401)");
-        }
-        NimbusJwtDecoder decoder = NimbusJwtDecoder
-                .withJwkSource(new ImmutableJWKSet<SecurityContext>(new JWKSet(jwks)))
-                .jwsAlgorithm(SignatureAlgorithm.ES256)
-                .build();
-        decoder.setJwtValidator(createValidator(properties));
-        return decoder;
-    }
+	/**
+	 * @param properties configuracion de claves, audiencia e issuer
+	 * @return verificador de turn tokens listo para el resource server
+	 */
+	public static JwtDecoder create(TurnTokenProperties properties) {
+		List<JWK> jwks = parseKeys(properties.keys());
+		if (jwks.isEmpty()) {
+			log.warn("No hay claves publicas de turn token configuradas: se rechazaran todas las peticiones de chat (401)");
+		}
+		NimbusJwtDecoder decoder = NimbusJwtDecoder
+				.withJwkSource(new ImmutableJWKSet<SecurityContext>(new JWKSet(jwks)))
+				.jwsAlgorithm(SignatureAlgorithm.ES256)
+				.build();
+		decoder.setJwtValidator(createValidator(properties));
+		return decoder;
+	}
 
-    private static List<JWK> parseKeys(List<TurnTokenProperties.TurnTokenKey> keys) {
-        List<JWK> jwks = new ArrayList<>();
-        for (TurnTokenProperties.TurnTokenKey key : keys) {
-            if (!key.isEmpty()) {
-                jwks.add(toEcJwk(key));
-            }
-        }
-        return jwks;
-    }
+	private static List<JWK> parseKeys(List<TurnTokenProperties.TurnTokenKey> keys) {
+		List<JWK> jwks = new ArrayList<>();
+		for (TurnTokenProperties.TurnTokenKey key : keys) {
+			if (!key.isEmpty()) {
+				jwks.add(toEcJwk(key));
+			}
+		}
+		return jwks;
+	}
 
-    private static JWK toEcJwk(TurnTokenProperties.TurnTokenKey key) {
-        return new ECKey.Builder(Curve.P_256, parseEcPublicKey(key)).keyID(key.kid()).build();
-    }
+	private static JWK toEcJwk(TurnTokenProperties.TurnTokenKey key) {
+		return new ECKey.Builder(Curve.P_256, parseEcPublicKey(key)).keyID(key.kid()).build();
+	}
 
-    private static ECPublicKey parseEcPublicKey(TurnTokenProperties.TurnTokenKey key) {
-        try {
-            byte[] der = toDer(key.publicKey());
-            return (ECPublicKey) KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(der));
-        }
-        catch (NoSuchAlgorithmException | InvalidKeySpecException | ClassCastException | IllegalArgumentException ex) {
-            throw new IllegalStateException(
-                    "Clave publica del turn token invalida para el kid " + key.kid() + ": " + ex.getClass().getSimpleName(), ex);
-        }
-    }
+	private static ECPublicKey parseEcPublicKey(TurnTokenProperties.TurnTokenKey key) {
+		try {
+			byte[] der = toDer(key.publicKey());
+			return (ECPublicKey) KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(der));
+		}
+		catch (NoSuchAlgorithmException | InvalidKeySpecException | ClassCastException | IllegalArgumentException ex) {
+			throw new IllegalStateException(
+					"Clave publica del turn token invalida para el kid " + key.kid() + ": " + ex.getClass().getSimpleName(), ex);
+		}
+	}
 
-    /**
-     * Acepta el material en base64 (una linea, comodo para variables de entorno) o en PEM en crudo.
-     * En el caso base64 puede contener el PEM completo o directamente el DER.
-     */
-    private static byte[] toDer(String material) {
-        String trimmed = material.trim();
-        if (trimmed.contains(PEM_MARKER)) {
-            return Base64.getMimeDecoder().decode(withoutPemHeaders(trimmed));
-        }
-        byte[] decoded = Base64.getMimeDecoder().decode(trimmed);
-        return isPem(decoded) ? Base64.getMimeDecoder().decode(withoutPemHeaders(new String(decoded, StandardCharsets.US_ASCII)))
-                : decoded;
-    }
+	/**
+	 * Acepta el material en base64 (una linea, comodo para variables de entorno) o en PEM en crudo.
+	 * En el caso base64 puede contener el PEM completo o directamente el DER.
+	 */
+	private static byte[] toDer(String material) {
+		String trimmed = material.trim();
+		if (trimmed.contains(PEM_MARKER)) {
+			return Base64.getMimeDecoder().decode(withoutPemHeaders(trimmed));
+		}
+		byte[] decoded = Base64.getMimeDecoder().decode(trimmed);
+		return isPem(decoded) ? Base64.getMimeDecoder().decode(withoutPemHeaders(new String(decoded, StandardCharsets.US_ASCII)))
+				: decoded;
+	}
 
-    private static boolean isPem(byte[] material) {
-        byte[] marker = PEM_MARKER.getBytes(StandardCharsets.US_ASCII);
-        if (material.length < marker.length) {
-            return false;
-        }
-        for (int i = 0; i < marker.length; i++) {
-            if (material[i] != marker[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
+	private static boolean isPem(byte[] material) {
+		byte[] marker = PEM_MARKER.getBytes(StandardCharsets.US_ASCII);
+		if (material.length < marker.length) {
+			return false;
+		}
+		for (int i = 0; i < marker.length; i++) {
+			if (material[i] != marker[i]) {
+				return false;
+			}
+		}
+		return true;
+	}
 
-    private static String withoutPemHeaders(String pem) {
-        return pem.replaceAll("-----[A-Z ]+-----", "");
-    }
+	private static String withoutPemHeaders(String pem) {
+		return pem.replaceAll("-----[A-Z ]+-----", "");
+	}
 
-    private static OAuth2TokenValidator<Jwt> createValidator(TurnTokenProperties properties) {
-        List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
-        validators.add(JwtValidators.createDefault());
-        validators.add(new JwtClaimValidator<List<String>>(AUDIENCE_CLAIM,
-                audiences -> audiences != null && audiences.contains(properties.audience())));
-        if (StringUtils.hasText(properties.issuer())) {
-            validators.add(new JwtClaimValidator<String>(ISSUER_CLAIM, properties.issuer()::equals));
-        }
-        return new DelegatingOAuth2TokenValidator<>(validators);
-    }
+	private static OAuth2TokenValidator<Jwt> createValidator(TurnTokenProperties properties) {
+		List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
+		validators.add(JwtValidators.createDefault());
+		validators.add(new JwtClaimValidator<List<String>>(AUDIENCE_CLAIM,
+				audiences -> audiences != null && audiences.contains(properties.audience())));
+		if (StringUtils.hasText(properties.issuer())) {
+			validators.add(new JwtClaimValidator<String>(ISSUER_CLAIM, properties.issuer()::equals));
+		}
+		return new DelegatingOAuth2TokenValidator<>(validators);
+	}
 }

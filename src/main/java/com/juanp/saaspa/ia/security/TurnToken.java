@@ -19,60 +19,60 @@ import java.time.Instant;
  * @param rawToken token original, que se reenvia tal cual a la API interna del backend
  */
 public record TurnToken(
-        String turnId,
-        String tenantId,
-        String conversationId,
-        Channel channel,
-        Agent agent,
-        String userId,
-        Role role,
-        Instant expiresAt,
-        String rawToken) {
+		String turnId,
+		String tenantId,
+		String conversationId,
+		Channel channel,
+		Agent agent,
+		String userId,
+		Role role,
+		Instant expiresAt,
+		String rawToken) {
 
-    /** Canales soportados por el contrato de chat. */
-    public enum Channel {
+	/** Canales soportados por el contrato de chat. */
+	public enum Channel {
 
-        /** WhatsApp Cloud API (Fase 4). */
-        WHATSAPP,
+		/** WhatsApp Cloud API (Fase 4). */
+		WHATSAPP,
 
-        /** Widget web anonimo. */
-        WEB_WIDGET,
+		/** Widget web anonimo. */
+		WEB_WIDGET,
 
-        /** Chat web con sesion iniciada. */
-        WEB_LOGGED,
+		/** Chat web con sesion iniciada. */
+		WEB_LOGGED,
 
-        /** Chat del dashboard (empleado o administrador). */
-        DASHBOARD
+		/** Chat del dashboard (empleado o administrador). */
+		DASHBOARD
 
-    }
+	}
 
-    /** Agente que debe atender el turno. */
-    public enum Agent {
+	/** Agente que debe atender el turno. */
+	public enum Agent {
 
-        /** Agente de clientas: solo datos propios y catalogo publico (R3). */
-        CLIENTAS,
+		/** Agente de clientas: solo datos propios y catalogo publico (R3). */
+		CLIENTAS,
 
-        /** Agente de administracion: solo lectura (R4). */
-        ADMIN
+		/** Agente de administracion: solo lectura (R4). */
+		ADMIN
 
-    }
+	}
 
-    /** Roles del backend. */
-    public enum Role {
+	/** Roles del backend. */
+	public enum Role {
 
-        /** Clienta final. */
-        CLIENTE,
+		/** Clienta final. */
+		CLIENTE,
 
-        /** Personal de la sede. */
-        EMPLEADO,
+		/** Personal de la sede. */
+		EMPLEADO,
 
-        /** Administracion. */
-        ADMIN
+		/** Administracion. */
+		ADMIN
 
-    }
+	}
 
-    /** @return {@code true} si el turno viene de una visitante anonima */
-    public boolean isAnonymous() {
-        return this.userId == null;
-    }
+	/** @return {@code true} si el turno viene de una visitante anonima */
+	public boolean isAnonymous() {
+		return this.userId == null;
+	}
 }

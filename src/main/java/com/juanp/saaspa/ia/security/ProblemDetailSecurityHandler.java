@@ -26,50 +26,50 @@ import tools.jackson.databind.ObjectMapper;
  */
 public class ProblemDetailSecurityHandler implements AuthenticationEntryPoint, AccessDeniedHandler {
 
-    private final ObjectMapper objectMapper;
+	private final ObjectMapper objectMapper;
 
-    public ProblemDetailSecurityHandler(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
+	public ProblemDetailSecurityHandler(ObjectMapper objectMapper) {
+		this.objectMapper = objectMapper;
+	}
 
-    @Override
-    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException exception)
-            throws IOException {
-        write(response, HttpStatus.UNAUTHORIZED, "No autorizado", detail(exception));
-    }
+	@Override
+	public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException exception)
+			throws IOException {
+		write(response, HttpStatus.UNAUTHORIZED, "No autorizado", detail(exception));
+	}
 
-    @Override
-    public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException exception)
-            throws IOException {
-        write(response, HttpStatus.FORBIDDEN, "Acceso denegado", "El turn token no permite esta operacion");
-    }
+	@Override
+	public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException exception)
+			throws IOException {
+		write(response, HttpStatus.FORBIDDEN, "Acceso denegado", "El turn token no permite esta operacion");
+	}
 
-    /**
-     * Respuesta 401 reutilizable por los filtros de seguridad.
-     *
-     * @param response respuesta HTTP en curso
-     * @param detail mensaje generico para el cliente
-     */
-    public void unauthorized(HttpServletResponse response, String detail) throws IOException {
-        write(response, HttpStatus.UNAUTHORIZED, "No autorizado", detail);
-    }
+	/**
+	 * Respuesta 401 reutilizable por los filtros de seguridad.
+	 *
+	 * @param response respuesta HTTP en curso
+	 * @param detail mensaje generico para el cliente
+	 */
+	public void unauthorized(HttpServletResponse response, String detail) throws IOException {
+		write(response, HttpStatus.UNAUTHORIZED, "No autorizado", detail);
+	}
 
-    private void write(HttpServletResponse response, HttpStatus status, String title, String detail) throws IOException {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setTitle(title);
-        response.setStatus(status.value());
-        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        this.objectMapper.writeValue(response.getOutputStream(), problem);
-    }
+	private void write(HttpServletResponse response, HttpStatus status, String title, String detail) throws IOException {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+		problem.setTitle(title);
+		response.setStatus(status.value());
+		response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+		this.objectMapper.writeValue(response.getOutputStream(), problem);
+	}
 
-    private static String detail(AuthenticationException exception) {
-        if (exception instanceof InsufficientAuthenticationException) {
-            return "Falta el turn token";
-        }
-        if (exception instanceof BadCredentialsException) {
-            return "Turn token invalido, expirado o de otra audiencia";
-        }
-        return "Autenticacion requerida";
-    }
+	private static String detail(AuthenticationException exception) {
+		if (exception instanceof InsufficientAuthenticationException) {
+			return "Falta el turn token";
+		}
+		if (exception instanceof BadCredentialsException) {
+			return "Turn token invalido, expirado o de otra audiencia";
+		}
+		return "Autenticacion requerida";
+	}
 }
