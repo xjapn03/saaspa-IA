@@ -27,6 +27,8 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -39,6 +41,7 @@ import com.juanp.saaspa.ia.agent.customer.CustomerAgent;
 import com.juanp.saaspa.ia.agent.handoff.HandoffConfig;
 import com.juanp.saaspa.ia.backend.BackendUnavailableException;
 import com.juanp.saaspa.ia.config.LlmClientConfig;
+import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.SecurityConfig;
 import com.juanp.saaspa.ia.security.ServiceKeyVerifier;
 import com.juanp.saaspa.ia.security.TestTurnTokens;
@@ -52,7 +55,7 @@ import com.juanp.saaspa.ia.usage.TurnLogService;
  * <p>El agente se sustituye por un doble (R14): no hay llamada a un LLM real ni al backend.
  */
 @WebMvcTest(ChatController.class)
-@Import({ SecurityConfig.class, HandoffConfig.class, LlmClientConfig.class })
+@Import({ SecurityConfig.class, HandoffConfig.class, LlmClientConfig.class, TenantPropertiesConfig.class })
 class ChatControllerTest {
 
 	private static final String SERVICE_KEY = "test-service-key";
@@ -129,6 +132,21 @@ class ChatControllerTest {
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 				.andExpect(jsonPath("$.status").value(400))
 				.andExpect(jsonPath("$.detail").value(containsString("tenantId")));
+
+		then(this.customerAgent).shouldHaveNoInteractions();
+		then(this.turnLogService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	@DisplayName("rechaza un tenant del turn token que no esta en la lista permitida")
+	void rejectsUnknownTenant() throws Exception {
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims("CLIENTAS", "otro-tenant")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("otro-tenant", "CLIENTAS", "Que servicios tienen?")))
+				.andExpect(status().isForbidden())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+				.andExpect(jsonPath("$.title").value("Tenant no permitido"));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
 		then(this.turnLogService).shouldHaveNoInteractions();
@@ -269,4 +287,13 @@ class ChatControllerTest {
 				 "locale": "es-CO", "timezone": "America/Bogota", "now": "2026-10-01T10:00:00-05:00"}
 				""".formatted(TURN_ID, tenantId, agent, text);
 	}
+}
+
+/**
+ * Registra {@code TenantProperties} en el slice {@code @WebMvcTest}, donde la autoconfig de
+ * propiedades no esta activa.
+ */
+@TestConfiguration(proxyBeanMethods = false)
+@EnableConfigurationProperties(TenantProperties.class)
+class TenantPropertiesConfig {
 }

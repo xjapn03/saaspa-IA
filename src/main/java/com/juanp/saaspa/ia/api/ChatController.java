@@ -20,6 +20,7 @@ import com.juanp.saaspa.ia.agent.handoff.HandoffPolicy;
 import com.juanp.saaspa.ia.api.dto.ChatRequestDto;
 import com.juanp.saaspa.ia.api.dto.ChatResponseDto;
 import com.juanp.saaspa.ia.config.LlmProperties;
+import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
 import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.usage.TurnLogService;
@@ -51,12 +52,15 @@ public class ChatController {
 
 	private final LlmProperties llmProperties;
 
+	private final TenantProperties tenantProperties;
+
 	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService, HandoffPolicy handoffPolicy,
-			LlmProperties llmProperties) {
+			LlmProperties llmProperties, TenantProperties tenantProperties) {
 		this.customerAgent = customerAgent;
 		this.turnLogService = turnLogService;
 		this.handoffPolicy = handoffPolicy;
 		this.llmProperties = llmProperties;
+		this.tenantProperties = tenantProperties;
 	}
 
 	/**
@@ -70,6 +74,11 @@ public class ChatController {
 	public ChatResponseDto chat(@Valid @RequestBody ChatRequestDto request) {
 		TurnToken turnToken = CurrentTurnToken.require();
 		TurnContextValidator.validate(turnToken, request);
+
+		// A-03: solo se atienden turnos del tenant configurado (fallo cerrado, 403).
+		if (!this.tenantProperties.defaultTenant().equals(turnToken.tenantId())) {
+			throw new TenantNotAllowedException("El tenant del turn token no esta permitido");
+		}
 
 		if (turnToken.agent() != TurnToken.Agent.CLIENTAS) {
 			throw new UnsupportedAgentException(

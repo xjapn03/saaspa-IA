@@ -55,6 +55,11 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 | Chat dashboard | logueado | `EMPLEADO` | ADMIN (solo agenda) |
 | Chat dashboard | logueado | `ADMIN` | ADMIN (ventas y reportes) |
 
+## Requisitos de desarrollo
+
+- **Java 21 (LTS)**. Fedora 44 ya no empaqueta `java-21-openjdk` (solo 25/27); instálalo con
+  [SDKMAN](https://sdkman.io/): `sdk install java 21.0.12-tem`. Compila y testea con `./mvnw -B verify`.
+
 ## Stack
 
 | Capa | Tecnología |

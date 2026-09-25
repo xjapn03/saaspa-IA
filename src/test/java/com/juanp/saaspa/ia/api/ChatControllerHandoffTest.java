@@ -34,6 +34,7 @@ import com.juanp.saaspa.ia.api.dto.ChatRequestDto;
 import com.juanp.saaspa.ia.api.dto.ChatResponseDto;
 import com.juanp.saaspa.ia.backend.BackendClientConfig;
 import com.juanp.saaspa.ia.config.LlmProperties;
+import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.security.TurnTokenAuthentication;
 import com.juanp.saaspa.ia.tools.ToolsConfig;
@@ -80,7 +81,9 @@ class ChatControllerHandoffTest {
 			TurnLogService turnLogService = mock(TurnLogService.class);
 			LlmProperties llmProperties = new LlmProperties(Duration.ofSeconds(3), Duration.ofSeconds(30),
 					Duration.ofSeconds(35));
-			ChatController controller = new ChatController(agent, turnLogService, policy, llmProperties);
+			TenantProperties tenantProperties = context.getBean(TenantProperties.class);
+			ChatController controller = new ChatController(agent, turnLogService, policy, llmProperties,
+					tenantProperties);
 
 			TurnToken token = new TurnToken(TURN_ID.toString(), "kamerinos", "conv-1", TurnToken.Channel.WEB_WIDGET,
 					TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300), "turn-token-123");
