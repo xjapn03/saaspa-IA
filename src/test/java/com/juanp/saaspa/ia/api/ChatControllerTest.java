@@ -18,9 +18,13 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -187,20 +191,27 @@ class ChatControllerTest {
 		then(this.customerAgent).shouldHaveNoInteractions();
 	}
 
-	@Test
-	@DisplayName("un tema de salud responde con handoff solicitado y su motivo")
-	void handsOffSensitiveTopic() throws Exception {
-		given(this.customerAgent.reply(any(TurnToken.class), any(String.class)))
-				.willReturn(new CustomerAgent.CustomerReply("Mejor te paso con una asesora del centro.",
-						"customer-agent.v1", "deepseek-flash", 1000, 40));
-
+	@ParameterizedTest(name = "handoff en codigo sin llamar al modelo: {1}")
+	@MethodSource("sensitiveTopics")
+	@DisplayName("los temas sensibles se responden en codigo, sin llamar al modelo")
+	void handsOffSensitiveTopicsWithoutCallingModel(String message, String reason, String expectedText) throws Exception {
 		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
 				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content(requestJson("kamerinos", "CLIENTAS", "Estoy embarazada, puedo hacerme el masaje?")))
+				.content(requestJson("kamerinos", "CLIENTAS", message)))
 				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply.text").value(containsString(expectedText)))
 				.andExpect(jsonPath("$.handoff.requested").value(true))
-				.andExpect(jsonPath("$.handoff.reason").value("HEALTH_TOPIC"));
+				.andExpect(jsonPath("$.handoff.reason").value(reason));
+
+		then(this.customerAgent).shouldHaveNoInteractions();
+	}
+
+	static Stream<Arguments> sensitiveTopics() {
+		return Stream.of(
+				Arguments.of("Estoy embarazada, puedo hacerme el masaje?", "HEALTH_TOPIC", "profesional del centro"),
+				Arguments.of("Quiero poner un reclamo por el servicio de ayer", "COMPLAINT", "Lamento lo sucedido"),
+				Arguments.of("Quiero hablar con una asesora", "EXPLICIT_REQUEST", "persona del equipo"));
 	}
 
 	@Test
