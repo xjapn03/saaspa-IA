@@ -13,21 +13,26 @@ import com.juanp.saaspa.ia.api.dto.ChatRequestDto;
 import com.juanp.saaspa.ia.api.dto.ChatResponseDto;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
 import com.juanp.saaspa.ia.security.TurnToken;
+import com.juanp.saaspa.ia.usage.TurnLogService;
 
 /**
  * Endpoint de chat que NestJS llama para cada turno ({@code POST /api/v1/chat}).
  *
  * <p>La parte de seguridad (clave de servicio y turn token) la resuelve la cadena de filtros; aqui solo
- * se comprueba que el contexto del cuerpo coincide con el token (R1), se enruta al agente y se traduce
- * su respuesta al contrato. Las escrituras (crear o mover citas) no existen en la Fase 1.
+ * se comprueba que el contexto del cuerpo coincide con el token (R1), se enruta al agente, se registra
+ * el turno en {@code ia.turn_log} (T1.6) y se traduce la respuesta al contrato. Las escrituras (crear o
+ * mover citas) no existen en la Fase 1.
  */
 @RestController
 public class ChatController {
 
 	private final CustomerAgent customerAgent;
 
-	public ChatController(CustomerAgent customerAgent) {
+	private final TurnLogService turnLogService;
+
+	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService) {
 		this.customerAgent = customerAgent;
+		this.turnLogService = turnLogService;
 	}
 
 	/**
@@ -47,7 +52,15 @@ public class ChatController {
 					"El agente " + turnToken.agent().name() + " estara disponible en la Fase 3");
 		}
 
+		long start = System.nanoTime();
 		CustomerAgent.CustomerReply reply = this.customerAgent.reply(turnToken, request.message().text());
+		long latencyMs = (System.nanoTime() - start) / 1_000_000;
+
+		this.turnLogService.record(new TurnLogService.TurnLog(request.turnId(), turnToken.tenantId(),
+				turnToken.conversationId(), turnToken.channel().name(), turnToken.agent().name(), turnToken.userId(),
+				turnToken.role() == null ? null : turnToken.role().name(), reply.promptVersion(), reply.model(),
+				reply.promptTokens() == null ? 0 : reply.promptTokens(),
+				reply.completionTokens() == null ? 0 : reply.completionTokens(), latencyMs));
 
 		return new ChatResponseDto(request.turnId(),
 				new ChatResponseDto.Reply(reply.text(), List.of()),
