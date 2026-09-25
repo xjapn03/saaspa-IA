@@ -3,7 +3,7 @@ info:
   title: saaspa-IA - Chat API (NestJS -> IA)
   version: 0.4.0
   description: >-
-    Contrato BORRADOR v0.3.0. La v0.2.0 se reviso contra saaspa-backend@develop (ce41e487) en la tarea T1.0
+    Contrato BORRADOR v0.4.0. La v0.2.0 se reviso contra saaspa-backend@develop (ce41e487) en la tarea T1.0
     (informe: docs/contracts/t1.0-backend-validation.md). NestJS sigue siendo el unico punto de
     entrada de canales: resuelve tenant, identidad y rol, y llama a este servicio.
     Estado en el backend: el emisor del turn token NO existe todavia (hoy solo hay JWT de sesion

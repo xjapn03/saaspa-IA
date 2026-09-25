@@ -5,7 +5,9 @@ Es un servicio **separado** en **Java 21 + Spring Boot 4 + Spring AI 2.0** que a
 "cerebro" de los agentes conversacionales, mientras el backend **NestJS** (`saaspa-backend`)
 sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 
-> **Estado:** Fase 0 (alineación y contratos). Nada implementado aún.
+> **Estado:** Fase 1 en curso (cerebro mínimo + chat web anónimo). Completadas T1.1–T1.7
+> (turn token, cliente HTTP, herramientas de lectura, endpoint de chat, agente CLIENTAS,
+> registro de turnos y handoff); pendientes T1.8 (dataset de evaluación) y el criterio E2E de la Fase 1.
 > El plan completo está en [`AI_WhatsApp_SaaS_Roadmap_2026.md`](./AI_WhatsApp_SaaS_Roadmap_2026.md).
 
 ## Qué es (y qué no es)
@@ -41,7 +43,7 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 - **Precios, horarios y stock no van en RAG**: van en tablas y se consultan con herramientas.
 - **Cada agente tiene solo sus herramientas** (el de clientas no accede a reportes).
 - **Multi-tenant híbrido** con aislamiento de RAG y base de datos (`tenant_id` en todo dato del agente).
-- **Evaluación automática en CI y control de costos**.
+- **Evaluación con LLM-as-a-Judge fuera del `verify` de CI (regla R14) y control de costos**.
 
 ## Canales e identidad
 
@@ -62,7 +64,7 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 | LLM | DeepSeek (`deepseek-flash`, soporta tool calling) detrás de `ChatClient` |
 | Memoria | PostgreSQL, esquema `ia`, vía JDBC (`initialize-schema: never`); ventana de 10 |
 | RAG | PostgreSQL + pgvector (mismo motor que el backend) |
-| Evaluación | Dataset en `eval/` + LLM-as-a-Judge en CI |
+| Evaluación | Dataset en `eval/` + LLM-as-a-Judge (fuera del `verify` de CI, regla R14) |
 
 ## Estructura del repositorio
 
@@ -85,8 +87,8 @@ saaspa-IA/
 
 | Fase | Contenido |
 |---|---|
-| 0 | Alinear docs y contratos (este estado) |
-| 1 | Cerebro mínimo + chat web anónimo |
+| 0 | Alinear docs y contratos |
+| 1 | Cerebro mínimo + chat web anónimo (en curso) |
 | 2 | Agenda por chat + cliente logueado |
 | 3 | Agente ADMIN + reportes |
 | 4 | WhatsApp + RAG |
