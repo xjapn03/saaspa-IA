@@ -73,6 +73,12 @@ public class ApiExceptionHandler {
 				"El modelo no respondio a tiempo; intenta de nuevo en un momento");
 	}
 
+	@ExceptionHandler(TenantNotAllowedException.class)
+	public ProblemDetail tenantNotAllowed(TenantNotAllowedException exception) {
+		return problem(HttpStatus.FORBIDDEN, "Tenant no permitido",
+				"El tenant del turno no esta permitido en este servicio");
+	}
+
 	@ExceptionHandler(AuthenticationException.class)
 	public ProblemDetail unauthenticated(AuthenticationException exception) {
 		return problem(HttpStatus.UNAUTHORIZED, "No autorizado", "Falta el turn token o no es valido");
