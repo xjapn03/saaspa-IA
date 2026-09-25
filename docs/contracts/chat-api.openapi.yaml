@@ -64,6 +64,13 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '504':
+          description: >-
+            El modelo no respondio dentro del deadline del turno (saaspa.llm.turn-deadline)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
 components:
   securitySchemes:
     serviceApiKey:

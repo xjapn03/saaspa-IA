@@ -23,6 +23,15 @@ spring:
           model: ${LLM_MODEL:deepseek-flash}
           temperature: 0.3
           max-tokens: 1024
+    retry:
+      # Reintentos acotados de la llamada al modelo (ADR 0009): 2 reintentos y backoff corto.
+      max-attempts: 2
+      backoff:
+        initial-interval: 500ms
+        multiplier: 2
+        max-interval: 2s
+      # Los 4xx son errores del cliente, no transitorios: no se reintentan.
+      exclude-on-http-codes: 400,401,403,404,408,409,422,429
     chat:
       memory:
         repository:
@@ -55,6 +64,12 @@ saaspa:
     memory-window: ${IA_AGENT_MEMORY_WINDOW:10}
     # Prompt de sistema versionado del agente CLIENTAS (es-CO).
     customer-prompt: classpath:prompts/customer-agent.v1.md
+  llm:
+    # Timeouts del cliente HTTP hacia el modelo (ADR 0009). Aparte del cliente del backend.
+    connect-timeout: ${LLM_CONNECT_TIMEOUT:3s}
+    read-timeout: ${LLM_READ_TIMEOUT:30s}
+    # Tope total del turno conversacional (llamada al modelo + herramientas).
+    turn-deadline: ${LLM_TURN_DEADLINE:35s}
   backend:
     base-url: ${BACKEND_URL:http://localhost:3001}
     internal-api-key: ${INTERNAL_API_KEY:}
