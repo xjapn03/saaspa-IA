@@ -32,6 +32,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.juanp.saaspa.ia.agent.customer.CustomerAgent;
+import com.juanp.saaspa.ia.agent.handoff.HandoffConfig;
 import com.juanp.saaspa.ia.backend.BackendUnavailableException;
 import com.juanp.saaspa.ia.security.SecurityConfig;
 import com.juanp.saaspa.ia.security.ServiceKeyVerifier;
@@ -46,7 +47,7 @@ import com.juanp.saaspa.ia.usage.TurnLogService;
  * <p>El agente se sustituye por un doble (R14): no hay llamada a un LLM real ni al backend.
  */
 @WebMvcTest(ChatController.class)
-@Import(SecurityConfig.class)
+@Import({ SecurityConfig.class, HandoffConfig.class })
 class ChatControllerTest {
 
 	private static final String SERVICE_KEY = "test-service-key";
@@ -184,6 +185,22 @@ class ChatControllerTest {
 				.andExpect(jsonPath("$.detail").value(containsString("identidad")));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
+	}
+
+	@Test
+	@DisplayName("un tema de salud responde con handoff solicitado y su motivo")
+	void handsOffSensitiveTopic() throws Exception {
+		given(this.customerAgent.reply(any(TurnToken.class), any(String.class)))
+				.willReturn(new CustomerAgent.CustomerReply("Mejor te paso con una asesora del centro.",
+						"customer-agent.v1", "deepseek-flash", 1000, 40));
+
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("kamerinos", "CLIENTAS", "Estoy embarazada, puedo hacerme el masaje?")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.handoff.requested").value(true))
+				.andExpect(jsonPath("$.handoff.reason").value("HEALTH_TOPIC"));
 	}
 
 	@Test
