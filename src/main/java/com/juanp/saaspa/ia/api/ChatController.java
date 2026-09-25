@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.juanp.saaspa.ia.agent.customer.CustomerAgent;
+import com.juanp.saaspa.ia.agent.handoff.HandoffPolicy;
 import com.juanp.saaspa.ia.api.dto.ChatRequestDto;
 import com.juanp.saaspa.ia.api.dto.ChatResponseDto;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
@@ -30,9 +31,12 @@ public class ChatController {
 
 	private final TurnLogService turnLogService;
 
-	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService) {
+	private final HandoffPolicy handoffPolicy;
+
+	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService, HandoffPolicy handoffPolicy) {
 		this.customerAgent = customerAgent;
 		this.turnLogService = turnLogService;
+		this.handoffPolicy = handoffPolicy;
 	}
 
 	/**
@@ -56,6 +60,8 @@ public class ChatController {
 		CustomerAgent.CustomerReply reply = this.customerAgent.reply(turnToken, request.message().text());
 		long latencyMs = (System.nanoTime() - start) / 1_000_000;
 
+		HandoffPolicy.Decision handoff = this.handoffPolicy.evaluate(request.message().text());
+
 		this.turnLogService.record(new TurnLogService.TurnLog(request.turnId(), turnToken.tenantId(),
 				turnToken.conversationId(), turnToken.channel().name(), turnToken.agent().name(), turnToken.userId(),
 				turnToken.role() == null ? null : turnToken.role().name(), reply.promptVersion(), reply.model(),
@@ -64,7 +70,7 @@ public class ChatController {
 
 		return new ChatResponseDto(request.turnId(),
 				new ChatResponseDto.Reply(reply.text(), List.of()),
-				new ChatResponseDto.Handoff(false, null),
+				new ChatResponseDto.Handoff(handoff.requested(), handoff.reason() == null ? null : handoff.reason().name()),
 				new ChatResponseDto.Usage(reply.model(), reply.promptTokens(), reply.completionTokens()),
 				List.of());
 	}

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.3.0
+  version: 0.4.0
   description: >-
     Contrato BORRADOR v0.3.0. La v0.2.0 se reviso contra saaspa-backend@develop (ce41e487) en la tarea T1.0
     (informe: docs/contracts/t1.0-backend-validation.md). NestJS sigue siendo el unico punto de
@@ -18,6 +18,8 @@ info:
     Implementado en la Fase 1 (v0.3.0): el servicio contrasta tenantId, conversationId, channel,
     agent e identidad del cuerpo con los claims del turn token y responde 400 si no coinciden
     (regla R1); el agente ADMIN todavia no existe y responde 501.
+    v0.4.0: el handoff lo decide el codigo (regla R10): los temas de salud, los reclamos y las
+    peticiones explicitas de hablar con una persona devuelven handoff.requested=true con su motivo.
 servers:
   - url: http://localhost:8000
 paths:
@@ -138,7 +140,13 @@ components:
           type: object
           properties:
             requested: { type: boolean }
-            reason: { type: string }
+            reason:
+              type: string
+              description: >-
+                Motivo cuando requested=true: HEALTH_TOPIC (alergias, embarazo, medicacion, piel,
+                reacciones o contraindicaciones), COMPLAINT (reclamo, cobro disputado o devolucion) o
+                EXPLICIT_REQUEST (la persona pidio hablar con alguien del equipo)
+              enum: [HEALTH_TOPIC, COMPLAINT, EXPLICIT_REQUEST]
         usage:
           type: object
           properties:
