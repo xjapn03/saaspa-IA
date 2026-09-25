@@ -5,11 +5,12 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Decide cuando hay que pasar la conversacion a una persona (regla R10).
+ * Decide cuando hay que pasar la conversacion a una persona (regla R10) y que texto se devuelve.
  *
  * <p>La decision es del <strong>codigo</strong>, no del modelo: se revisa el mensaje de la clienta
- * (normalizado, sin acentos ni mayusculas) y se marca el handoff con un motivo. El texto de la
- * respuesta sigue siendo del agente, que ademas ya esta instruido por el prompt para derivar.
+ * (normalizado, sin acentos ni mayusculas) y se marca el handoff con un motivo. Cuando hay handoff,
+ * <strong>no se llama al modelo</strong> y la respuesta es un texto canonico escrito aqui, de modo
+ * que un tema sensible nunca depende de que el modelo obedezca el prompt.
  *
  * <p>El sesgo es deliberado: ante una duda de salud se prefiere derivar a una profesional antes que
  * dejar que el agente aconseje. Los reclamos y las peticiones explicitas de hablar con alguien tambien
@@ -54,6 +55,24 @@ public class HandoffPolicy {
 			return new Decision(true, Reason.COMPLAINT);
 		}
 		return new Decision(false, null);
+	}
+
+	/**
+	 * Texto canonico de la respuesta cuando hay handoff (regla R10).
+	 *
+	 * <p>Lo escribe el codigo, no el modelo: para temas de salud, reclamos o peticiones explicitas de
+	 * hablar con una persona, la clienta recibe este texto (nunca consejo generado por el LLM).
+	 *
+	 * @param reason motivo del handoff (no {@code null})
+	 * @return respuesta canonica para la clienta
+	 */
+	public String canonicalReply(Reason reason) {
+		return switch (reason) {
+			case HEALTH_TOPIC -> "Sobre temas de salud te atiende mejor una profesional del centro. "
+					+ "Te paso con una persona del equipo para que te oriente.";
+			case COMPLAINT -> "Lamento lo sucedido. Para revisar tu caso te paso con una persona del equipo.";
+			case EXPLICIT_REQUEST -> "Claro, te paso con una persona del equipo para que te atienda.";
+		};
 	}
 
 	private static boolean matchesAny(String normalized, List<String> patterns) {

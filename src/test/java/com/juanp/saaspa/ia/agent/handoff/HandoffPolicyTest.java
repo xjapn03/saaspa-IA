@@ -78,6 +78,16 @@ class HandoffPolicyTest {
 		assertThat(this.policy.evaluate("   ").requested()).isFalse();
 	}
 
+	@Test
+	@DisplayName("el texto canonico existe y es distinto por motivo")
+	void canonicalRepliesArePresentAndDistinct() {
+		assertThat(this.policy.canonicalReply(HandoffPolicy.Reason.HEALTH_TOPIC)).isNotBlank();
+		assertThat(this.policy.canonicalReply(HandoffPolicy.Reason.COMPLAINT)).isNotBlank();
+		assertThat(this.policy.canonicalReply(HandoffPolicy.Reason.EXPLICIT_REQUEST)).isNotBlank();
+		assertThat(this.policy.canonicalReply(HandoffPolicy.Reason.HEALTH_TOPIC))
+				.isNotEqualTo(this.policy.canonicalReply(HandoffPolicy.Reason.COMPLAINT));
+	}
+
 	static Stream<String> normalMessages() {
 		return Stream.of("Cuánto cuesta el masaje relajante?", "Qué servicios tienen para el cabello?",
 				"Tienen disponibilidad el jueves en la tarde?", "Dónde quedan y hasta qué hora atienden?",

@@ -57,21 +57,42 @@ public class ChatController {
 		}
 
 		long start = System.nanoTime();
-		CustomerAgent.CustomerReply reply = this.customerAgent.reply(turnToken, request.message().text());
-		long latencyMs = (System.nanoTime() - start) / 1_000_000;
-
 		HandoffPolicy.Decision handoff = this.handoffPolicy.evaluate(request.message().text());
+
+		String replyText;
+		String model;
+		String promptVersion;
+		Integer promptTokens;
+		Integer completionTokens;
+		if (handoff.requested()) {
+			// R10: ante un tema sensible no se llama al modelo ni se devuelve su texto; la respuesta
+			// es canonica y la escribe el codigo.
+			replyText = this.handoffPolicy.canonicalReply(handoff.reason());
+			model = null;
+			promptVersion = null;
+			promptTokens = 0;
+			completionTokens = 0;
+		}
+		else {
+			CustomerAgent.CustomerReply reply = this.customerAgent.reply(turnToken, request.message().text());
+			replyText = reply.text();
+			model = reply.model();
+			promptVersion = reply.promptVersion();
+			promptTokens = reply.promptTokens();
+			completionTokens = reply.completionTokens();
+		}
+		long latencyMs = (System.nanoTime() - start) / 1_000_000;
 
 		this.turnLogService.record(new TurnLogService.TurnLog(request.turnId(), turnToken.tenantId(),
 				turnToken.conversationId(), turnToken.channel().name(), turnToken.agent().name(), turnToken.userId(),
-				turnToken.role() == null ? null : turnToken.role().name(), reply.promptVersion(), reply.model(),
-				reply.promptTokens() == null ? 0 : reply.promptTokens(),
-				reply.completionTokens() == null ? 0 : reply.completionTokens(), latencyMs));
+				turnToken.role() == null ? null : turnToken.role().name(), promptVersion, model,
+				promptTokens == null ? 0 : promptTokens,
+				completionTokens == null ? 0 : completionTokens, latencyMs));
 
 		return new ChatResponseDto(request.turnId(),
-				new ChatResponseDto.Reply(reply.text(), List.of()),
+				new ChatResponseDto.Reply(replyText, List.of()),
 				new ChatResponseDto.Handoff(handoff.requested(), handoff.reason() == null ? null : handoff.reason().name()),
-				new ChatResponseDto.Usage(reply.model(), reply.promptTokens(), reply.completionTokens()),
+				new ChatResponseDto.Usage(model, promptTokens, completionTokens),
 				List.of());
 	}
 }
