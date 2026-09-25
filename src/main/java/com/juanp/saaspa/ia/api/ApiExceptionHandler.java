@@ -66,6 +66,13 @@ public class ApiExceptionHandler {
 				"El sistema de agenda no pudo responder la consulta");
 	}
 
+	@ExceptionHandler(LlmTimeoutException.class)
+	public ProblemDetail llmTimeout(LlmTimeoutException exception) {
+		log.warn("Turno sin respuesta del modelo: {}", exception.getClass().getSimpleName());
+		return problem(HttpStatus.GATEWAY_TIMEOUT, "Modelo no disponible",
+				"El modelo no respondio a tiempo; intenta de nuevo en un momento");
+	}
+
 	@ExceptionHandler(AuthenticationException.class)
 	public ProblemDetail unauthenticated(AuthenticationException exception) {
 		return problem(HttpStatus.UNAUTHORIZED, "No autorizado", "Falta el turn token o no es valido");

@@ -3,6 +3,7 @@ package com.juanp.saaspa.ia.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -32,6 +33,7 @@ import com.juanp.saaspa.ia.agent.handoff.HandoffPolicy;
 import com.juanp.saaspa.ia.api.dto.ChatRequestDto;
 import com.juanp.saaspa.ia.api.dto.ChatResponseDto;
 import com.juanp.saaspa.ia.backend.BackendClientConfig;
+import com.juanp.saaspa.ia.config.LlmProperties;
 import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.security.TurnTokenAuthentication;
 import com.juanp.saaspa.ia.tools.ToolsConfig;
@@ -76,7 +78,9 @@ class ChatControllerHandoffTest {
 			CustomerAgent agent = context.getBean(CustomerAgent.class);
 			HandoffPolicy policy = new HandoffPolicy();
 			TurnLogService turnLogService = mock(TurnLogService.class);
-			ChatController controller = new ChatController(agent, turnLogService, policy);
+			LlmProperties llmProperties = new LlmProperties(Duration.ofSeconds(3), Duration.ofSeconds(30),
+					Duration.ofSeconds(35));
+			ChatController controller = new ChatController(agent, turnLogService, policy, llmProperties);
 
 			TurnToken token = new TurnToken(TURN_ID.toString(), "kamerinos", "conv-1", TurnToken.Channel.WEB_WIDGET,
 					TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300), "turn-token-123");

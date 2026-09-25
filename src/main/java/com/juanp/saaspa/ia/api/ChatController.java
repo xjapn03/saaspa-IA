@@ -1,9 +1,16 @@
 package com.juanp.saaspa.ia.api;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
+import org.springframework.security.concurrent.DelegatingSecurityContextExecutor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -12,6 +19,7 @@ import com.juanp.saaspa.ia.agent.customer.CustomerAgent;
 import com.juanp.saaspa.ia.agent.handoff.HandoffPolicy;
 import com.juanp.saaspa.ia.api.dto.ChatRequestDto;
 import com.juanp.saaspa.ia.api.dto.ChatResponseDto;
+import com.juanp.saaspa.ia.config.LlmProperties;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
 import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.usage.TurnLogService;
@@ -27,16 +35,28 @@ import com.juanp.saaspa.ia.usage.TurnLogService;
 @RestController
 public class ChatController {
 
+	/**
+	 * Executor para aplicar el deadline del turno: hilos virtuales y propagacion del contexto de
+	 * seguridad, de modo que las herramientas (que leen {@code CurrentTurnToken}) sigan funcionando
+	 * dentro de la llamada al agente.
+	 */
+	private static final Executor TURN_EXECUTOR = new DelegatingSecurityContextExecutor(
+			Executors.newVirtualThreadPerTaskExecutor());
+
 	private final CustomerAgent customerAgent;
 
 	private final TurnLogService turnLogService;
 
 	private final HandoffPolicy handoffPolicy;
 
-	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService, HandoffPolicy handoffPolicy) {
+	private final LlmProperties llmProperties;
+
+	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService, HandoffPolicy handoffPolicy,
+			LlmProperties llmProperties) {
 		this.customerAgent = customerAgent;
 		this.turnLogService = turnLogService;
 		this.handoffPolicy = handoffPolicy;
+		this.llmProperties = llmProperties;
 	}
 
 	/**
@@ -74,7 +94,7 @@ public class ChatController {
 			completionTokens = 0;
 		}
 		else {
-			CustomerAgent.CustomerReply reply = this.customerAgent.reply(turnToken, request.message().text());
+			CustomerAgent.CustomerReply reply = this.replyWithDeadline(turnToken, request.message().text());
 			replyText = reply.text();
 			model = reply.model();
 			promptVersion = reply.promptVersion();
@@ -94,5 +114,31 @@ public class ChatController {
 				new ChatResponseDto.Handoff(handoff.requested(), handoff.reason() == null ? null : handoff.reason().name()),
 				new ChatResponseDto.Usage(model, promptTokens, completionTokens),
 				List.of());
+	}
+
+	/**
+	 * Llama al agente con un deadline por turno (ADR 0009): si se supera
+	 * {@code saaspa.llm.turn-deadline}, el turno falla con {@link LlmTimeoutException} (504).
+	 */
+	private CustomerAgent.CustomerReply replyWithDeadline(TurnToken turnToken, String message) {
+		try {
+			return CompletableFuture
+					.supplyAsync(() -> this.customerAgent.reply(turnToken, message), TURN_EXECUTOR)
+					.orTimeout(this.llmProperties.turnDeadline().toMillis(), TimeUnit.MILLISECONDS)
+					.join();
+		}
+		catch (CompletionException ex) {
+			Throwable cause = ex.getCause();
+			if (cause instanceof TimeoutException) {
+				throw new LlmTimeoutException("El modelo no respondio a tiempo");
+			}
+			if (cause instanceof RuntimeException runtimeException) {
+				throw runtimeException;
+			}
+			if (cause instanceof Error error) {
+				throw error;
+			}
+			throw ex;
+		}
 	}
 }
