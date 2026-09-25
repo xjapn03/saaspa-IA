@@ -58,7 +58,9 @@ public class CustomerAgentConfig {
 		ToolCallback[] toolCallbacks = Arrays.stream(ToolCallbacks.from(customerTools))
 				.map(callback -> new LoggingToolCallback(callback, toolCallLogger, objectMapper))
 				.toArray(ToolCallback[]::new);
-		return chatClientBuilder.defaultToolCallbacks(toolCallbacks).defaultAdvisors(chatMemoryAdvisor).build();
+		// defaultTools acepta tanto POJOs con @Tool como instancias de ToolCallback (asi se registran
+		// las envueltas para auditar); defaultToolCallbacks esta deprecado en Spring AI 2.0.
+		return chatClientBuilder.defaultTools(toolCallbacks).defaultAdvisors(chatMemoryAdvisor).build();
 	}
 
 	@Bean

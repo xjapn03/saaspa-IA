@@ -9,7 +9,6 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 
 import reactor.core.publisher.Flux;
@@ -49,10 +48,5 @@ final class TestChatModel implements ChatModel {
 	@Override
 	public Flux<ChatResponse> stream(Prompt prompt) {
 		return Flux.empty();
-	}
-
-	@Override
-	public ChatOptions getDefaultOptions() {
-		return ChatOptions.builder().build();
 	}
 }
