@@ -1,18 +1,27 @@
 openapi: 3.1.0
 info:
   title: saaspa-backend - Web Chat API (Frontend -> NestJS)
-  version: 0.1.0
+  version: 0.2.0
   description: >-
-    Contrato BORRADOR (tarea T1.0) del punto de entrada de chat web que debe exponer saaspa-backend.
-    NO existe todavia en el backend: es el pedido 3 de AGENTS.md seccion 11 (la validacion contra
-    develop@ce41e487 esta en docs/contracts/t1.0-backend-validation.md).
+    Contrato IMPLEMENTADO v0.2.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    (informe: docs/contracts/f1-e2e-validation.md; la validacion del borrador esta en
+    docs/contracts/t1.0-backend-validation.md). Implementado en src/modules/chat/chat.controller.ts
+    y src/modules/chat/chat.service.ts (POST /api/chat, @Public(), 200).
     El frontend (widget anonimo, chat logueado y chat del dashboard) habla SIEMPRE con NestJS,
     nunca directamente con saaspa-IA. NestJS resuelve tenantId, canal, agente, rol e identidad, y
     emite el turn token antes de llamar a saaspa-IA (POST /api/v1/chat). El cliente NO envia tenant,
-    canal, agente, rol ni identidad: solo mensaje y conversationId.
-    Anti-abuso obligatorio: throttling por IP y por sesion, longitud maxima de mensaje, tope de
-    mensajes por sesion anonima y sin PII en logs. El conversationId anonimo debe ser impredecible
-    (aleatorio de 128 bits) y estar atado a la sesion.
+    canal, agente, rol ni identidad: solo mensaje y conversationId; el ValidationPipe global
+    (whitelist + forbidNonWhitelisted) rechaza con 400 cualquier campo desconocido.
+    Anti-abuso implementado: @Throttle de 20 req/60 s por IP; mensaje de mas de 1000 caracteres ->
+    413; tope de 30 mensajes por hora por sesion anonima -> 429 (el contador vive en la base de datos,
+    no en memoria); sin PII en logs (solo turnId, canal y conversacion).
+    Sesion: la cookie kamerinos_chat_session (httpOnly, sameSite=lax, 7 dias, secure en produccion)
+    identifica la sesion anonima; se guarda su hash SHA-256 y el conversationId es aleatorio de
+    16 bytes en hex (32 caracteres) cuando el cliente no lo envia. Un conversationId que no pertenece
+    a la sesion o al tenant responde 403.
+    Handoff (A-10a): cuando la conversacion ya fue derivada, NestJS responde su texto canonico
+    (HANDOFF_ACTIVE_MESSAGE) con handoff.requested=true SIN llamar a saaspa-IA, asi que el bot no
+    puede retomar la conversacion.
 servers:
   - url: https://kamerinos.sandrapinzonsaludybelleza.com.co
 paths:
@@ -40,16 +49,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/WebChatResponse'
         '400':
-          description: Cuerpo invalido (mensaje vacio o campos desconocidos)
+          description: Cuerpo invalido (mensaje vacio, con formato incorrecto o campos desconocidos)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '403':
+          description: >-
+            El conversationId no pertenece a esta sesion (o a este tenant): la conversacion no se
+            puede continuar desde otra sesion
         '413':
-          description: Mensaje demasiado largo (limite del servidor)
+          description: Mensaje demasiado largo (mas de 1000 caracteres; MAX_MESSAGE_LENGTH)
         '429':
           description: >-
-            Limite de tasa alcanzado (por IP o por sesion) o tope de mensajes de la sesion anonima
-            agotado
+            Limite alcanzado: 20 peticiones por minuto y por IP (Throttler) o tope de 30 mensajes por
+            hora en la sesion anonima
+        '502':
+          description: >-
+            saaspa-IA devolvio un error no clasificado (el backend lo mapea a Bad Gateway) o no esta
+            disponible
+        '504':
+          description: saaspa-IA no respondio dentro de IA_BOT_TIMEOUT_MS (20000 ms por defecto)
 components:
   securitySchemes:
     sessionCookie:
@@ -86,7 +105,9 @@ components:
       properties:
         conversationId:
           type: string
-          description: Identificador que el widget debe reenviar en los siguientes turnos.
+          description: >-
+            Identificador que el widget debe reenviar en los siguientes turnos. Si el cliente no lo
+            envio, NestJS lo genera (16 bytes aleatorios en hex, 32 caracteres) y lo ata a la sesion.
         turnId:
           type: string
           format: uuid
@@ -105,11 +126,18 @@ components:
                   url: { type: string, format: uri }
         handoff:
           type: object
+          description: >-
+            Se OMITE cuando no hay handoff. Con handoff activo, `requested` es true y `reason` repite
+            el motivo guardado (HEALTH_TOPIC, COMPLAINT o EXPLICIT_REQUEST).
           properties:
             requested: { type: boolean }
             reason: { type: string }
         usage:
           type: object
+          required: [tokensIn, tokensOut]
+          description: >-
+            Siempre presente. Si saaspa-IA no informa los tokens, el backend los publica como 0
+            (nunca null).
           properties:
             model: { type: string }
             tokensIn: { type: integer }

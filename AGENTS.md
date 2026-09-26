@@ -5,7 +5,7 @@
 > **gana este archivo y las ADRs en `docs/adr/`**. Al terminar cada tarea, actualiza la sección
 > [12. Checklist de progreso](#12-checklist-de-progreso) y el [registro de cambios](#14-registro-de-cambios).
 
-Última actualización: 2026-09-25
+Última actualización: 2026-09-26
 
 ---
 
@@ -225,7 +225,7 @@ Resuelto respecto del snapshot inicial de Initializr:
   `spring-ai-starter-model-chat-memory-repository-jdbc` (se retiró el de Redis).
 - Paquete base `com.juanp.saaspa.ia`; clase `SaaspaIaApplication`; `HELP.md` eliminado.
 - `application.yml` (+ perfil `local`), `.env.example` y `.gitignore` (ya ignora `.env`).
-- `docker-compose.yml` de desarrollo (`pgvector/pgvector:pg15` + `redis:7-alpine`).
+- `docker-compose.yml` de desarrollo (`pgvector/pgvector:pg15`; el Redis de desarrollo se retiró en T1.9/A-18).
 - Flyway `V1__init_ia_schema.sql` (esquema `ia`: memoria JDBC, `turn_log`, `tool_call_log`).
 - ADRs 0006, 0007 y 0008 escritas; 0003 y 0005 corregidas.
 - Contratos `docs/contracts/*.openapi.yaml`; CI `.github/workflows/verify.yml`.
@@ -249,7 +249,23 @@ Resuelto respecto del snapshot inicial de Initializr:
   `Host github-personal` en `~/.ssh/config`. Desde entonces la persona autenticó `gh` con protocolo SSH
   (ver sección 9). **Verificar** con `git ls-remote origin` antes de la primera operación remota.
 
+### Fase 1 — completada (2026-09-26)
+
+- T1.0–T1.10 hechos: endpoint de chat con verificación de servicio y turn token, cliente HTTP hacia NestJS,
+  herramientas de lectura, agente CLIENTAS con prompt versionado (`customer-agent.v2`), memoria con ventana,
+  handoff en código, registro durable en el esquema `ia`, dataset `eval/` con runner y pruebas de integración
+  con Testcontainers.
+- El criterio de aceptación **E2E** se cumplió con el backend real y el turno quedó registrado en
+  `ia.turn_log` / `ia.tool_call_log`. Evidencia y reconciliación de los contratos:
+  `docs/contracts/f1-e2e-validation.md`.
+- Lo que falta para un despliegue real no está en este repo: el contenedor `ia-bot` y los valores de
+  entorno de producción en `kamerinos-infra` (ver §11.5).
+
 ### Discrepancias verificadas durante T1.0 (2026-09-24)
+
+> **Superado (2026-09-26):** todo lo de abajo era cierto antes de la Fase 1. Los pedidos 1 a 4 ya están
+> implementados en `saaspa-backend@develop@9fc8b12`; el estado real y la evidencia están en
+> `docs/contracts/f1-e2e-validation.md`. Se conserva como punto de partida.
 
 Validación de los contratos contra `saaspa-backend` (rama `develop`, commit `ce41e487`), leyendo con `gh` en
 solo lectura. Informe completo: `docs/contracts/t1.0-backend-validation.md`. Resumen:
@@ -266,6 +282,29 @@ solo lectura. Informe completo: `docs/contracts/t1.0-backend-validation.md`. Res
 - **Dos claves de servicio distintas**, una por dirección: `IA_BOT_API_KEY` (NestJS → IA) e
   `INTERNAL_API_KEY` (IA → NestJS). No se unifican.
 
+### Estado verificado tras el E2E de la Fase 1 (2026-09-26)
+
+Validación en solo lectura contra `saaspa-backend@develop@9fc8b12`, más la evidencia del turno real
+persistida en `ia.turn_log`/`ia.tool_call_log`. Informe completo:
+`docs/contracts/f1-e2e-validation.md`. Resumen:
+
+- El **turn token** existe y es ES256 (P-256) con `kid`, `jti = turnId`, `iss` por defecto
+  `saaspa-backend`, `aud` por defecto `saaspa-ia` y `TTL` por defecto 300 s. El backend tiene **una sola
+  ranura de `kid`**: la rotación con dos claves solo está implementada en este servicio (T1.1).
+- Existe `/api/internal/v1/*` con `InternalAuthGuard` (clave de servicio + turn token, **403** si el
+  tenant del token no es el `TENANT_ID` del backend) y `@SkipThrottle()` en los dos controladores de
+  Fase 1. La **auditoría de llamadas internas sigue pendiente** (`AuditService` existe, pero
+  `src/modules/internal/` no lo usa).
+- `/availability` ya devuelve **offset explícito** calculado con `Intl/ICU`: la duda de la TZ del
+  contenedor (C-02) queda resuelta.
+- Existe `POST /api/chat` público (throttle 20 req/60 s, 413 > 1000 caracteres, 429 con tope de 30
+  mensajes/hora por sesión anónima, 403 si el `conversationId` no es de la sesión) y el backend llama a
+  este servicio con `IA_BOT_API_KEY` + turn token, timeout de 20 s.
+- El **estado del handoff vive en NestJS** (`chat_conversation_states.handoffActive`): con la
+  conversación derivada, el backend responde su texto canónico **sin** llamar a este servicio (A-10a).
+- El registro del E2E guardó `prompt_version = customer-agent.v1` (el run fue anterior a PR #20/#21) y
+  dejó una fila `USER` sin `turn_log`: corrobora **A-08** (los turnos fallidos no se registran).
+
 ---
 
 ## 8. Estructura objetivo y convenciones de código
@@ -275,7 +314,7 @@ saaspa-IA/
 ├── AGENTS.md
 ├── README.md
 ├── pom.xml  mvnw  mvnw.cmd
-├── docker-compose.yml                 # solo desarrollo local (Postgres+pgvector, Redis)
+├── docker-compose.yml                 # solo desarrollo local (Postgres+pgvector; Redis vuelve en Fase 2)
 ├── .env.example
 ├── docs/
 │   ├── adr/                           # 0001..000N
@@ -460,7 +499,8 @@ Objetivo: dejar el repo coherente y los contratos definidos antes de escribir l�
   qué endpoints internos existen, cómo se emite hoy el JWT, forma de servicios y disponibilidad. Registrar las
   diferencias en `docs/contracts/` y en "Pedidos a otros repos". No modificar el backend.
 - `POST /api/v1/chat`: autenticación de servicio + verificación del turn token, validación, `ProblemDetail`.
-- Agente CLIENTAS con `ChatClient`, prompt v1 (es-CO), memoria (ver D-MEM) y ventana corta.
+- Agente CLIENTAS con `ChatClient`, prompt versionado en es-CO (`customer-agent.v2`, antes v1), memoria (ver
+  D-MEM) y ventana corta.
 - Herramientas de lectura: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (cliente HTTP hacia el
   backend, probado con WireMock).
 - Reglas de handoff y de temas sensibles en el prompt y en pruebas.
@@ -468,8 +508,8 @@ Objetivo: dejar el repo coherente y los contratos definidos antes de escribir l�
 - Dataset `eval/customer-agent.v1.jsonl` (10–15 casos) y runner.
 - **Criterio de aceptación:** una consulta por chat web anónimo devuelve el precio correcto obtenido de la herramienta;
   nunca inventa precios; un tema sensible deriva a handoff; los tokens quedan registrados; tests de contrato en verde.
-  Este criterio **E2E** está condicionado a los pedidos 1 a 3 de la sección 11 (turn token, `/api/internal/v1/*` y
-  `POST /api/chat`); el resto de la Fase 1 avanza con WireMock (ver checklist de la sección 12).
+  **Cumplido el 2026-09-26** con el backend real (turn token, tenant, herramienta y LLM reales): evidencia en
+  `docs/contracts/f1-e2e-validation.md`.
 
 ### Fase 2 — Agenda por chat + cliente logueado
 - Herramientas de escritura con confirmación e idempotencia: `crearCita` (queda en `PENDIENTE_PAGO` y devuelve el
@@ -507,11 +547,24 @@ recordatorios/promociones proactivas (requieren consentimiento y plantillas de M
 
 ## 11. Pedidos a otros repos
 
-Contratos **borrador** validados contra el código real de `saaspa-backend` (rama `develop`, commit `ce41e487`,
-2026-09-24; informe en `docs/contracts/t1.0-backend-validation.md`). Los pedidos van **en orden de dependencia**
-y **nada de esto existe todavía** en el backend.
+**Estado (2026-09-26):** los pedidos **1 a 4 están implementados** en `saaspa-backend@develop@9fc8b12`
+(turn token + guard, `/api/internal/v1/*` de Fase 1, `POST /api/chat` público y las variables de entorno);
+el criterio E2E de la Fase 1 pasó y la evidencia está en `docs/contracts/f1-e2e-validation.md`.
+Sigue **pendiente en el backend**: la auditoría de las llamadas internas, la segunda ranura de `kid` para
+rotar la clave del turn token y los pedidos de Fase 2 en adelante.
 
-### 11.1 Turn token ES256 + guard (bloquea lo demás)
+Los contratos se validaron por primera vez contra `develop@ce41e487` (2026-09-24; informe en
+`docs/contracts/t1.0-backend-validation.md`, superado) y se reconciliaron después contra
+`develop@9fc8b12` (informe de cierre en `docs/contracts/f1-e2e-validation.md`). Los pedidos van **en
+orden de dependencia**.
+
+### 11.1 Turn token ES256 + guard (bloquea lo demás) — IMPLEMENTADO
+
+- Estado: implementado en `saaspa-backend@develop@9fc8b12` (`src/modules/internal/turn-token.service.ts`
+  y `guards/internal-auth.guard.ts`). Reconciliado el 2026-09-26
+  (`docs/contracts/f1-e2e-validation.md`).
+- Queda pendiente en el backend la **segunda ranura de `kid`**: hoy solo se acepta el `kid` configurado,
+  así que rotar la clave sin cortar el servicio todavía no es posible desde el lado de NestJS.
 
 - Par de claves asimétrico **ES256 (P-256, PEM)** con cabecera `kid`; la privada vive en NestJS y la pública se
   entrega a este servicio en `TURN_TOKEN_KEY_CURRENT_PUBLIC_KEY` / `TURN_TOKEN_KEY_PREVIOUS_PUBLIC_KEY`
@@ -530,33 +583,36 @@ y **nada de esto existe todavía** en el backend.
   petición ni con argumentos generados por el modelo.
 - Este servicio reenvía el turn token tal cual en cada llamada interna.
 
-### 11.2 `/api/internal/v1/*` con `@SkipThrottle`
+### 11.2 `/api/internal/v1/*` con `@SkipThrottle` — Fase 1 IMPLEMENTADA
 
 Contrato: `docs/contracts/internal-api.openapi.yaml`. Autenticación: `X-Internal-Api-Key` con el valor de
 `INTERNAL_API_KEY` + `Authorization: Bearer <turn token>`.
 
-- Fase 1: `GET /services` (paginado, espejo de `/api/services/public`), `GET /services/{id|slug}` y
-  `GET /availability?serviceId&date`.
-- `/availability` debe devolver **offset explícito** y el campo `timezone`: hoy el backend calcula las franjas
-  con `Date.setHours` en la TZ del contenedor (`TZ: America/Bogota` está en `kamerinos-infra`, pero la imagen
-  `node:20-alpine` no instala `tzdata`: hay que confirmar el efecto real).
-- `@SkipThrottle()` o límite propio (el `ThrottlerGuard` global es 100 req/60 s y hoy solo se salta en el
-  webhook de WhatsApp) y criterio de auditoría para las llamadas internas (hoy quedarían con actor nulo).
+- Fase 1 (implementada): `GET /services` (paginado, espejo de `/api/services/public`),
+  `GET /services/{idOrSlug}` (UUID o slug) y `GET /availability?serviceId&date`.
+- **Hecho:** `/availability` **ya** devuelve offset explícito y el campo `timezone`, calculado con
+  `Intl.DateTimeFormat`/`longOffset` (no depende del `tzdata` del contenedor): el riesgo de TZ del informe
+  T1.0 queda cerrado.
+- **Hecho:** `@SkipThrottle()` está aplicado en los dos controladores internos de Fase 1. **Pendiente:** la
+  auditoría de las llamadas internas (`AuditService` existe, pero `src/modules/internal/` no lo usa).
 - Fase 2: `POST /bookings` con `Idempotency-Key`, `PATCH`/`DELETE /bookings/{id}` y `GET /me/bookings`.
   Fase 3: reportes. Fase 4: NestJS resuelve el `waId` de WhatsApp por su lado (ADR 0005) y firma el
   `userId` en el turn token; este servicio no pide resolverlo (A-11).
 
-### 11.3 `POST /api/chat` público (chat web)
+### 11.3 `POST /api/chat` público (chat web) — IMPLEMENTADO
 
 Contrato: `docs/contracts/web-chat-api.openapi.yaml`.
 
 - Único punto de entrada del canal web (anónimo y logueado): resuelve `tenantId`, `channel`, `agent`, rol e
   identidad en el servidor, emite el turn token y llama a `POST {IA_BOT_URL}/api/v1/chat`.
 - El cuerpo del frontend solo lleva `message` y `conversationId`; el `conversationId` anónimo es **aleatorio de
-  128 bits** (impredecible) y está atado a la sesión.
-- **Estado del handoff (A-10):** NestJS **mantiene el estado del handoff por conversación** (coherente con que
-  ya es el dueño del `ConversationState` de WhatsApp): recuerda si una conversación quedó en handoff y **no
-  deja que el bot la retome** sin intervención humana. Este servicio solo informa de
+  128 bits** (impredecible) y está atado a la sesión. Implementado: 16 bytes en hex (32 caracteres), cookie
+  `kamerinos_chat_session` (httpOnly, 7 días) con hash SHA-256 de la clave de sesión guardado en la base de
+  datos, y **403** si el `conversationId` no pertenece a la sesión.
+- **Estado del handoff (A-10a, implementado):** NestJS **mantiene el estado del handoff por conversación** en
+  la tabla `chat_conversation_states` (`handoffActive` + `handoffReason`): recuerda si una conversación quedó
+  en handoff y **no deja que el bot la retome**; en ese caso responde su texto canónico
+  (`HANDOFF_ACTIVE_MESSAGE`) **sin llamar** a este servicio. Este servicio solo informa de
   `handoff.requested`/`reason` en la respuesta; no guarda estado de sesión.
 - **Anti-abuso:** throttling por IP y por sesión, longitud máxima de mensaje, tope de mensajes por sesión
   anónima y **sin PII en logs**.
@@ -578,7 +634,7 @@ Contrato: `docs/contracts/web-chat-api.openapi.yaml`.
 }
 ```
 
-Respuesta (borrador):
+Respuesta:
 
 ```json
 {
@@ -593,25 +649,31 @@ Respuesta (borrador):
 Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS → IA) + **turn token** (ADR 0006) en
 `Authorization: Bearer`. Streaming (SSE) queda para después de la Fase 1.
 
-### 11.4 Variables de entorno y claves de servicio
+### 11.4 Variables de entorno y claves de servicio — IMPLEMENTADO (quedan los valores de producción)
 
 - Son **dos secretos distintos**, uno por dirección, y **no se unifican**: `IA_BOT_API_KEY` (NestJS → IA) e
-  `INTERNAL_API_KEY` (IA → NestJS). Documentar ambos en los `.env.example` de los dos repos.
-- `saaspa-backend` debe añadir `INTERNAL_API_KEY` y la clave privada del turn token
-  (`TURN_TOKEN_PRIVATE_KEY` + `TURN_TOKEN_KID`); ya tiene `IA_BOT_URL` e `IA_BOT_API_KEY` (hoy sin uso).
+  `INTERNAL_API_KEY` (IA → NestJS). Documentados en los `.env.example` de los dos repos.
+- `saaspa-backend` ya tiene `IA_BOT_URL`, `IA_BOT_TIMEOUT_MS`, `IA_BOT_API_KEY`, `INTERNAL_API_KEY`,
+  `TURN_TOKEN_PRIVATE_KEY` (PKCS#8 PEM EC P-256 en base64), `TURN_TOKEN_KID`, `TURN_TOKEN_ISSUER`
+  (`saaspa-backend`), `TURN_TOKEN_AUDIENCE` (`saaspa-ia`), `TURN_TOKEN_TTL_SECONDS` (300), `TENANT_ID` y
+  `TENANT_TIMEZONE`.
 - `saaspa-IA` usa `TURN_TOKEN_KEY_CURRENT_PUBLIC_KEY`, `TURN_TOKEN_KEY_PREVIOUS_PUBLIC_KEY`,
   `TURN_TOKEN_AUDIENCE` (por defecto `saaspa-ia`), `TURN_TOKEN_ISSUER` (opcional), `INTERNAL_API_KEY` e
-  `IA_BOT_API_KEY`; `LLM_API_KEY`, `BACKEND_URL`, `DATABASE_URL`, `REDIS_URL` e `IA_TENANT_DEFAULT=kamerinos`
-  ya están previstas.
+  `IA_BOT_API_KEY`; además `LLM_API_KEY`, `BACKEND_URL`, `DATABASE_URL` e `IA_TENANT_DEFAULT=kamerinos`.
+  (`REDIS_URL` ya no aplica: Redis se retiró en T1.9/A-18 y volverá en la Fase 2 con uso real.)
+- Lo que falta es operativo, no de contrato: los **valores reales** en el despliegue (kamerinos-infra).
 
 ### 11.5 Otros repos y contratos
 
-- **kamerinos-infra:** contenedor `ia-bot` en la red interna; PostgreSQL con pgvector y usuario con permisos solo
-  sobre el esquema `ia`; variables de entorno de 11.4; confirmar la TZ efectiva del contenedor del backend
-  (`TZ: America/Bogota` está definido, pero la imagen es `node:20-alpine` sin `tzdata`).
+- **kamerinos-infra (pendiente):** añadir el contenedor `ia-bot` a la red interna; PostgreSQL con pgvector y
+  usuario con permisos solo sobre el esquema `ia`; variables de entorno de 11.4. El repositorio no se toca
+  desde 2026-09-18 y todavía no tiene el contenedor: es la coordinación que falta **antes de abrir la Fase 2**.
+  (La antigua duda de la TZ del contenedor del backend quedó resuelta: la disponibilidad se devuelve con
+  offset explícito calculado con `Intl/ICU`.)
 - **saaspa-frontend:** el chat web habla con `POST /api/chat` de NestJS, **nunca** directamente con este servicio.
-- **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.2.0), `internal-api.openapi.yaml` (IA → NestJS, v0.2.0),
-  `web-chat-api.openapi.yaml` (frontend → NestJS, v0.1.0) y `t1.0-backend-validation.md` (informe de T1.0).
+- **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.5.0), `internal-api.openapi.yaml` (IA → NestJS, v0.3.0),
+  `web-chat-api.openapi.yaml` (frontend → NestJS, v0.2.0), `f1-e2e-validation.md` (cierre de la Fase 1 y
+  reconciliación) y `t1.0-backend-validation.md` (informe histórico de T1.0, superado).
 
 ### Acoplamiento de configuracion con saaspa-backend (critico)
 
@@ -651,7 +713,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Memoria: decisión D-MEM aplicada (`spring-ai-starter-model-chat-memory-repository-jdbc`)
 - [x] Paquete `com.juanp.saaspa.ia`, clase `SaaspaIaApplication`, `HELP.md` eliminado
 - [x] `application.yml`, `application-local.yml`, `.env.example`, `.gitignore` (ignora `.env`)
-- [x] `docker-compose.yml` de desarrollo (`pgvector/pgvector:pg15` + `redis:7-alpine`)
+- [x] `docker-compose.yml` de desarrollo (`pgvector/pgvector:pg15`; el contenedor Redis se retiró en T1.9/A-18)
 - [x] Migración Flyway `V1` con esquema `ia`
 - [x] ADR 0006 (identidad y turn token)
 - [x] ADR 0007 (memoria y persistencia)
@@ -671,14 +733,15 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (`@Tool` en español, precios en COP preformateados, `ok=false` sin excepción — T1.3, 2026-09-24)
 - [x] Handoff y política de temas sensibles (decisión en código: salud, reclamos y peticiones explícitas con motivo `HEALTH_TOPIC`/`COMPLAINT`/`EXPLICIT_REQUEST`; contrato chat-api v0.4.0 — T1.7, 2026-09-25)
 - [x] Registro de mensajes, tool calls y tokens en `ia` (`ia.turn_log` con tenant/conversación/canal/agente/prompt/modelo/tokens/latencia, `ia.tool_call_log` con estado y JSON acotado, memoria JDBC para los mensajes; fallos de escritura no tumban el turno — T1.6, 2026-09-24)
-- [x] Tests: unitarios, contrato (WireMock) y Testcontainers Postgres — 97 tests, 0 fallos (2026-09-25)
+- [x] Tests: unitarios, contrato (WireMock), Testcontainers Postgres y evaluador — 116 tests, 0 fallos (2026-09-26)
 - [x] T1.8: dataset `eval/customer-agent.v1.jsonl` + runner (`CustomerAgentEvaluator`; en CI corre con un `ChatModel` guionizado, y la evaluación con LLM real corre aparte — R14) — 2026-09-25
 - [x] T1.9: prueba de integración del turno con Testcontainers Postgres (turno íntegro persistido + ejecución real de `listarServicios` contra WireMock; `ChatModel` guionizado — R14) — 2026-09-26
-- [ ] **[BLOQUEADO, depende de `saaspa-backend`]** Criterio de aceptación E2E de la Fase 1: chat web anónimo
-      que devuelve el precio real desde la herramienta. Es lo único que impide cerrar la Fase 1 al 100 %;
-      depende de los pedidos 1–3 de la sección 11 (turn token + guard, `/api/internal/v1/*` y `POST /api/chat`),
-      que se implementan en el repo del backend. El resto (T1.0–T1.9) está hecho y probado con WireMock y
-      Testcontainers.
+- [x] **Criterio de aceptación E2E de la Fase 1 (cumplido 2026-09-26):** chat web anónimo que devuelve el
+      precio real desde la herramienta, con el turn token, el tenant y el LLM reales, y con el turno y la
+      tool call persistidos en `ia.turn_log` / `ia.tool_call_log`. Evidencia y reconciliación de contratos
+      contra `saaspa-backend@develop@9fc8b12`: `docs/contracts/f1-e2e-validation.md` (T1.10, 2026-09-26).
+- [x] T1.10 Cierre de la Fase 1 (docs): informe de E2E + reconciliación de los tres contratos (chat-api
+      v0.5.0, internal-api v0.3.0, web-chat-api v0.2.0), AGENTS.md y README alineados — 2026-09-26
 
 ### Fase 2 — Agenda por chat + cliente logueado
 - [ ] `crearCita`, `reprogramarCita`, `cancelarCita`, `misCitas`
@@ -727,6 +790,11 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - A-02 (R10 en código: handoff antes del modelo, texto canónico) — PR #12.
 - A-03 (validación de `tenantId` con fallo cerrado, 403) — PR #14.
 - C-01 (= A-03), C-05/C-06 (README y contrato) — PR #11; C-07 (checklist) — PR #15; C-09 (= A-01) — PR #13; C-10 (dataset `eval/` y runner) — PR de T1.8; A-18 (Redis sin uso retirado) y D-01 (caso de precio del dataset) — PR de T1.9; A-20 (cancelación real del deadline), A-22 (408/429 reintentables) y C-12 (contrato de tenant único) — PR de la segunda pasada.
+- **Cierre de la Fase 1 (2026-09-26, T1.10):** **A-10** (el estado del handoff lo guarda NestJS y el bot no
+  puede retomar la conversación) y **C-02** (la autoridad de zona horaria sigue en `saaspa-IA` y el backend ya
+  devuelve offset explícito en `/availability`) quedan cerrados y verificados contra
+  `saaspa-backend@develop@9fc8b12`; **A-08** queda corroborado por la evidencia del E2E. Informe:
+  `docs/contracts/f1-e2e-validation.md`.
 - **Referenciados en el informe pero nunca redactados** (la §6 se prometió en la intro y el documento terminó en §5: corte de generación): **A-19, A-21, A-23, D-02, D-03, D-04**. Sin detalle disponible; no se persiguen.
 
 | ID | Sev. | Se resuelve en | Resumen |
@@ -735,9 +803,8 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | A-05 | Media | Fase 4 (antes de RAG) | `tenant_id`/RLS en la memoria (`spring_ai_chat_memory`); cubre C-08 |
 | A-06 | Media | Fase 2 | Sin tope de coste/turnos ni rate limiting por tenant |
 | A-07 | Media | Fase 2 | Turnos no idempotentes (reintento NestJS duplica llamada/coste/memoria) |
-| A-08 | Media | Fase 2 | `turn_log` sin estado; turnos fallidos no se registran |
+| A-08 | Media | Fase 2 | `turn_log` sin estado; turnos fallidos no se registran (corroborado por la evidencia del E2E: una fila `USER` de memoria sin fila en `turn_log`) |
 | A-09 | Media-baja | Fase 2 | Memoria read-modify-write sin serialización por conversación |
-| A-10 | **Media** | **antes de abrir la Fase 2** (ver decisión abajo) | Handoff sin estado: quién "engancha" con una persona |
 | A-11 | Media-baja | Fase 4 (antes del pedido de identidad) | `waId` viaja en el cuerpo, no en el turn token |
 | A-12 | Baja | Fase 5 (el dataset de T1.8 ya cubre el caso) | Sin guarda de salida sobre precios |
 | A-13 | Baja | Fase 5 / despliegue | Health no refleja LLM/backend; la clave de salida puede ir vacía |
@@ -745,30 +812,28 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | A-15 | Baja | Fase 5 | Sin correlación (`traceparent`/`X-Turn-Id`) ni métricas Micrometer |
 | A-16 | Baja | Fase 4 (RAG) | Catálogo del backend como contenido fiable (inyección indirecta) |
 | A-17 | Baja | Fase 4 | Sin retención/borrado de la memoria conversacional |
-| C-02 | Media | Fase 2 (antes del pedido 1) | `locale`/`timezone`/`now` obligatorios pero ignorados por el código |
+| C-02 | ~~Media~~ | **Resuelto (2026-09-26)** | `locale`/`timezone`/`now` se documentan como contexto informativo para el LLM y la autoridad de zona horaria sigue siendo `saaspa.tenant.timezone`; el backend ya devuelve `/availability` con offset explícito (ver `docs/contracts/f1-e2e-validation.md`) |
 | C-03 | Baja | Higiene | `usage.tokensIn/Out` tipados `integer` pero el código puede emitir `null` |
 | C-04 | Baja | Higiene | Límite de mensaje 1000 (`web-chat`) vs 2000 (`chat-api`) |
 | C-11 | Baja | Proceso | Rama `fix/deprecations-and-handoff` mezcló deprecaciones + T1.7 |
 | C-13 | Media-baja | Fase 2 | ADR 0007 dice que se guardan los turnos finales, pero los turnos con handoff no se guardan en la memoria (efecto de A-02) |
 | A-24 | Media | Fase 4 (WhatsApp real) | El agente formatea con Markdown estándar (`**negrita**`, `##` encabezados, tablas), que WhatsApp **no** interpreta (usa `*un*` asterisco y no admite encabezados ni tablas): hace falta **salida consciente del canal** (Markdown para el chat web, sintaxis de WhatsApp para WhatsApp), no el mismo texto para los dos. Hallazgo de la prueba E2E real |
 
-### Decisión pendiente antes de la Fase 2: estado del handoff (A-10)
+### Resuelto: estado del handoff (A-10) — decidido e implementado en el backend
 
-Con A-02, un tema sensible se responde en código y **no** llama al modelo, así que ese turno no deja
-rastro en la memoria (C-13). El handoff es hoy un flag por turno y el turno siguiente vuelve a
-empezar: nadie sabe que la clienta fue derivada y puede volver a ofrecer agendar. Antes de abrir la
-Fase 2 hay que decidir **quién guarda el estado del handoff**:
+El handoff se decidió por la opción **(a)**: NestJS guarda el estado por conversación y este servicio no
+guarda estado de sesión. Ya está **implementado y verificado** en `saaspa-backend@develop@9fc8b12`
+(2026-09-26):
 
-- **(a) NestJS por conversación (recomendado):** el gateway ya tiene `ConversationState` por
-  conversación; allí vive el flag (motivo + `turnId`) y se consulta antes de llamar a este servicio.
-  Sobrevive a reinicios, es la autoridad de canales y no duplica estado. Coste: un pedido de contrato
-  más a NestJS (junto al turn token).
-- **(b) Campo de sesión que devuelva este servicio:** el contrato de chat devuelve
-  `handoff.requested` (y un flag de sesión) y **NestJS lo persiste y lo reenvía**; este servicio solo
-  lo propaga. Un solo sitio decide (el código de `HandoffPolicy`); coste: NestJS lo guarda/reenvía y
-  hay que versionar el contrato.
+- Tabla `chat_conversation_states` (migración `20260926180000_add_chat_conversation_state`) con
+  `handoffActive`, `handoffReason`, `lastTurnId` y `messageCount`, atada a la sesión por hash de la clave.
+- Cuando `handoffActive` es true, el backend responde su texto canónico (`HANDOFF_ACTIVE_MESSAGE`) **sin
+  llamar** a este servicio: el bot no puede retomar la conversación.
+- Este servicio sigue informando `handoff.requested`/`reason` por turno; el estado de sesión no es suyo.
+- Evidencia y reconciliación: `docs/contracts/f1-e2e-validation.md`.
 
-No se implementa todavía: es una decisión de contrato que se revisa antes de la Fase 2.
+Queda como efecto colateral **C-13** (los turnos con handoff no entran en la memoria del agente, porque el
+código responde sin llamar al modelo): se resolverá en la Fase 2 junto con la memoria.
 
 ### Limitación actual de multi-tenant (A-04)
 
@@ -813,6 +878,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — docs/f1-nestjs-orders — cierre de Fase 1: pedidos 1–3 reescritos en §11 con las decisiones A-10 (NestJS mantiene el estado del handoff por conversación), A-11 (`waId` fuera del contrato; identidad solo por el turn token), C-02 (`saaspa-IA` es la autoridad de zona horaria; `timezone`/`now` son contexto informativo) y A-04 documentado como limitación de un solo tenant; contrato chat-api sin `identity.waId` y con `timezone`/`now` aclarados; DTO `Identity` sin `waId`; criterio E2E de Fase 1 marcado como bloqueado por `saaspa-backend` — verify verde (111 tests).
 - 2026-09-26 — fix/prompt-brevity-and-turn-test — brevedad del catálogo (prompt v1: para "qué servicios tienen", resumir 3–5 destacados o preguntar por la línea, no volcar los 13) + caso `R10-catalogo-breve` en el dataset con `maxReplyChars` (nuevo tope de longitud en el evaluador, R15) + `ChatApiTurnIntegrationTest` (turno real contra `POST /api/v1/chat` con Testcontainers + WireMock + `ChatModel` guionizado) y contenedor Postgres único compartido en los tests (evita el agotamiento de recursos) — verify verde (116 tests).
 - 2026-09-26 — chore/prompt-v2-and-whatsapp-finding — versionado del prompt: el cambio de brevedad pasa a `prompts/customer-agent.v2.md` (v1 vuelve a su contenido original) y suben `PROMPT_VERSION`, `AgentProperties` y `application.yml` a v2; nuevo hallazgo diferido **A-24** (Fase 4): el agente formatea en Markdown estándar y WhatsApp no lo interpreta, hace falta salida consciente del canal; `eval/README.md` anota el prompt objetivo — verify verde (116 tests).
+- 2026-09-26 — docs/f1-closeout-and-contract-reconciliation — T1.10 (cierre de la Fase 1): informe `docs/contracts/f1-e2e-validation.md` con la evidencia real del criterio E2E recuperada del volumen local (`ia.turn_log`: turno `WEB_WIDGET`/`CLIENTAS`, `customer-agent.v1`, `deepseek-flash`, 3750/317 tokens, 3611 ms; `ia.tool_call_log`: `listarServicios` OK en 65 ms) y reconciliación contra `saaspa-backend@develop@9fc8b12`; contratos a chat-api v0.5.0, internal-api v0.3.0 (403 de tenant, `{idOrSlug}`, `featured` como texto, disponibilidad con offset) y web-chat-api v0.2.0 (413/429/403 reales, cookie de sesión, handoff omitido); AGENTS.md §7/§11/§12/§13 al día (Fase 1 cerrada, **A-10** y **C-02** resueltos, **A-08** corroborado, `REDIS_URL` retirado, 116 tests) y README — verify verde (116 tests).
 
 ---
 
