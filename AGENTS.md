@@ -3,9 +3,9 @@
 > **Lee este archivo completo antes de tocar nada.** Es la fuente de verdad para cualquier agente de IA
 > (o persona) que trabaje en este repositorio. Si algo aquí contradice `README.md` o el roadmap largo,
 > **gana este archivo y las ADRs en `docs/adr/`**. Al terminar cada tarea, actualiza la sección
-> [12. Checklist de progreso](#12-checklist-de-progreso) y el [registro de cambios](#13-registro-de-cambios).
+> [12. Checklist de progreso](#12-checklist-de-progreso) y el [registro de cambios](#14-registro-de-cambios).
 
-Última actualización: 2026-09-24
+Última actualización: 2026-09-25
 
 ---
 
@@ -620,7 +620,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Reglas de GitHub de la sección 9 incorporadas a `develop` (PR `docs/agents-github-workflow`, fusionado 2026-09-23)
 - [x] `.github/pull_request_template.md` creada
 - [ ] Protección de ramas configurada por la persona (PR obligatorio, check `verify`, sin push directo)
-- [ ] JDK 21 con `javac` instalado en el equipo (documentado en el README)
+- [x] JDK 21 con `javac` instalado en el equipo (SDKMAN Temurin 21; documentado en el README — 2026-09-25)
 
 ### Fase 0 — Alineación y contratos (completada 2026-09-23)
 - [x] Ramas `main` y `develop` configuradas; trabajo en `feature/f0-alineacion`
@@ -648,8 +648,9 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Herramientas: `listarServicios`, `consultarServicio`, `consultarDisponibilidad` (`@Tool` en español, precios en COP preformateados, `ok=false` sin excepción — T1.3, 2026-09-24)
 - [x] Handoff y política de temas sensibles (decisión en código: salud, reclamos y peticiones explícitas con motivo `HEALTH_TOPIC`/`COMPLAINT`/`EXPLICIT_REQUEST`; contrato chat-api v0.4.0 — T1.7, 2026-09-25)
 - [x] Registro de mensajes, tool calls y tokens en `ia` (`ia.turn_log` con tenant/conversación/canal/agente/prompt/modelo/tokens/latencia, `ia.tool_call_log` con estado y JSON acotado, memoria JDBC para los mensajes; fallos de escritura no tumban el turno — T1.6, 2026-09-24)
-- [ ] Dataset `eval/customer-agent.v1.jsonl` y runner
-- [ ] Tests: unitarios, contrato (WireMock), Testcontainers Postgres
+- [x] Tests: unitarios, contrato (WireMock) y Testcontainers Postgres — 97 tests, 0 fallos (2026-09-25)
+- [ ] T1.8: dataset `eval/customer-agent.v1.jsonl` y runner
+- [ ] T1.9: prueba de integración E2E del turno (Testcontainers, `ChatModel` doble — R14)
 - [ ] **(bloqueado) Criterio de aceptación E2E de la Fase 1:** chat web anónimo que devuelve el precio real desde
       la herramienta. Depende de los pedidos 1 a 3 de la sección 11 (turn token + `/api/internal/v1/*` +
       `POST /api/chat`); el resto de la Fase 1 avanza con WireMock.
@@ -689,7 +690,45 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 
 ---
 
-## 13. Registro de cambios
+## 13. Hallazgos diferidos (revisión Hermes, 2026-09-25)
+
+> Revisión externa de solo lectura: `docs/reviews/2026-09-25-hermes-architecture-review.md`. Cada
+> hallazgo se evalúa contra el código real antes de aceptarlo (R17). Lo ya implementado figura como
+> resuelto; el resto queda aquí como backlog con severidad y la fase en la que se resolverá.
+
+**Resueltos en esta tanda (no diferidos):**
+
+- A-01 (timeouts/retry/deadline del LLM) — PR #13, ADR 0009.
+- A-02 (R10 en código: handoff antes del modelo, texto canónico) — PR #12.
+- A-03 (validación de `tenantId` con fallo cerrado, 403) — PR #14.
+- C-01 (= A-03), C-05/C-06 (README y contrato) — PR #11, C-07 (checklist) — este PR, C-09 (= A-01).
+
+| ID | Sev. | Se resuelve en | Resumen |
+|---|---|---|---|
+| A-04 | Media | Fase 2 (antes del pedido 1 a NestJS) | Config de tenant global (nombre/zona/prompt) vs `tenantId` del token |
+| A-05 | Media | Fase 4 (antes de RAG) | `tenant_id`/RLS en la memoria (`spring_ai_chat_memory`); cubre C-08 |
+| A-06 | Media | Fase 2 | Sin tope de coste/turnos ni rate limiting por tenant |
+| A-07 | Media | Fase 2 | Turnos no idempotentes (reintento NestJS duplica llamada/coste/memoria) |
+| A-08 | Media | Fase 2 | `turn_log` sin estado; turnos fallidos no se registran |
+| A-09 | Media-baja | Fase 2 | Memoria read-modify-write sin serialización por conversación |
+| A-10 | Media-baja | Fase 2 | Handoff sin estado: quién "engancha" con una persona |
+| A-11 | Media-baja | Fase 4 (antes del pedido de identidad) | `waId` viaja en el cuerpo, no en el turn token |
+| A-12 | Baja | Fase 5 / T1.8 (eval) | Sin guarda de salida sobre precios |
+| A-13 | Baja | Fase 5 / despliegue | Health no refleja LLM/backend; la clave de salida puede ir vacía |
+| A-14 | Baja | Fase 5 / T1.8 | Listas de handoff hardcodeadas y sin medir precisión/recall |
+| A-15 | Baja | Fase 5 | Sin correlación (`traceparent`/`X-Turn-Id`) ni métricas Micrometer |
+| A-16 | Baja | Fase 4 (RAG) | Catálogo del backend como contenido fiable (inyección indirecta) |
+| A-17 | Baja | Fase 4 | Sin retención/borrado de la memoria conversacional |
+| A-18 | Baja | Higiene (pronto) | `data-redis` y contenedor Redis sin uso en `src/main` |
+| C-02 | Media | Fase 2 (antes del pedido 1) | `locale`/`timezone`/`now` obligatorios pero ignorados por el código |
+| C-03 | Baja | Higiene | `usage.tokensIn/Out` tipados `integer` pero el código puede emitir `null` |
+| C-04 | Baja | Higiene | Límite de mensaje 1000 (`web-chat`) vs 2000 (`chat-api`) |
+| C-10 | Baja | T1.8 (antes de más comportamiento) | `eval/` no existe; R15 incumplida en T1.7 |
+| C-11 | Baja | Proceso | Rama `fix/deprecations-and-handoff` mezcló deprecaciones + T1.7 |
+
+---
+
+## 14. Registro de cambios
 
 Añade una línea por tarea terminada: `fecha — rama — qué cambió — resultado de verify`.
 
@@ -712,10 +751,15 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-24 — feature/f1-chat-endpoint — T1.4: `POST /api/v1/chat` (`ChatController`, DTOs validados, `TurnContextValidator` que contrasta cuerpo y turn token según R1, enrutado al agente y respuesta del contrato) + errores con `ProblemDetail` (400 validación/contexto, 501 agente no implementado, 502 backend no disponible, 401/500 defensivos) y contrato chat-api v0.3.0; 7 tests nuevos con MockMvc y agente doble — verify verde (56 tests).
 - 2026-09-24 — feature/f1-turn-logging — T1.6: registro durable en el esquema `ia` (`TurnLogService` → `turn_log` con tenant/conversación/canal/agente/prompt/modelo/tokens/latencia desde el controlador, `ToolCallLogger` → `tool_call_log` con estado, latencia y JSON acotado a 4000 caracteres, y `LoggingToolCallback` que envuelve las herramientas del `ChatClient` sin tocarlas); los fallos de escritura no tumbar el turno; 11 tests nuevos (auditoría con dobles + PostgreSQL real con Testcontainers, aislamiento por tenant y JSON grande) — verify verde (67 tests).
 - 2026-09-25 — fix/deprecations-and-handoff — corrección de dos deprecaciones marcadas para eliminar en Spring AI 2.0 (`defaultToolCallbacks(...)` → `defaultTools(...)`, que acepta `ToolCallback`; se retira el `getDefaultOptions()` de los dobles) + T1.7: política de handoff en código (`HandoffPolicy`: temas de salud, reclamos y peticiones explícitas con motivo en la respuesta del contrato, normalizando acentos y mayúsculas) y contrato chat-api v0.4.0; 21 tests nuevos — verify verde (88 tests) y sin deprecaciones propias (escaneo con `-Dmaven.compiler.showDeprecation`).
+- 2026-09-25 — chore/hermes-review-housekeeping — housekeeping de la revisión Hermes: el borrador se mueve a `docs/reviews/2026-09-25-hermes-architecture-review.md` (no es ADR); C-05 (README: Fase 1 en curso, sin promesa de evaluación en CI por R14) y C-06 (contrato chat-api v0.4.0) — verify verde (88 tests).
+- 2026-09-25 — fix/a02-handoff-code-enforcement — A-02 (R10 en código): el handoff se evalúa antes del modelo y, con motivo `HEALTH_TOPIC`/`COMPLAINT`/`EXPLICIT_REQUEST`, no se llama al modelo y se devuelve el texto canónico de `HandoffPolicy` — verify verde (92 tests).
+- 2026-09-25 — fix/a01-llm-timeouts-retry — A-01 + ADR 0009: `spring.ai.retry.max-attempts=2` con backoff acotado y 4xx excluidos, `RestClient.Builder` dedicado al modelo con timeouts (`saaspa.llm.*`) y deadline por turno → 504 — verify verde (96 tests).
+- 2026-09-25 — fix/a03-tenant-validation — A-03: `turnToken.tenantId()` validado contra `IA_TENANT_DEFAULT` con fallo cerrado (403) y README con el requisito de Java 21 vía SDKMAN — verify verde (97 tests).
+- 2026-09-25 — docs/deferred-hermes-findings — sección "Hallazgos diferidos" en AGENTS.md + checklist corregido (C-07) + registro de cambios — verify verde (97 tests).
 
 ---
 
-## 14. Cómo debe trabajar un agente en este repo
+## 15. Cómo debe trabajar un agente en este repo
 
 1. **Al empezar la sesión:** leer este archivo, `git status`, la rama actual y el checklist. Retomar donde quedó.
 2. **Planificar antes de programar** tareas de más de una hora: plan corto, aprobación implícita si respeta este
