@@ -149,7 +149,7 @@ class TurnToolIntegrationTest {
 	private static ChatRequestDto request() {
 		return new ChatRequestDto(TURN_ID, "kamerinos", "conv-it", TurnToken.Channel.WEB_WIDGET,
 				TurnToken.Agent.CLIENTAS,
-				new ChatRequestDto.Identity(ChatRequestDto.IdentityKind.ANONYMOUS, null, null, null),
+				new ChatRequestDto.Identity(ChatRequestDto.IdentityKind.ANONYMOUS, null, null),
 				new ChatRequestDto.Message("¿Cuánto cuesta el masaje relajante?"), "es-CO", "America/Bogota",
 				OffsetDateTime.parse("2026-10-01T10:00:00-05:00"));
 	}

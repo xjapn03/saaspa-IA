@@ -108,7 +108,7 @@ class ChatControllerHandoffTest {
 	private static ChatRequestDto healthRequest() {
 		return new ChatRequestDto(TURN_ID, "kamerinos", "conv-1", TurnToken.Channel.WEB_WIDGET,
 				TurnToken.Agent.CLIENTAS,
-				new ChatRequestDto.Identity(ChatRequestDto.IdentityKind.ANONYMOUS, null, null, null),
+				new ChatRequestDto.Identity(ChatRequestDto.IdentityKind.ANONYMOUS, null, null),
 				new ChatRequestDto.Message("Estoy embarazada, puedo hacerme el masaje?"), "es-CO", "America/Bogota",
 				OffsetDateTime.parse("2026-10-01T10:00:00-05:00"));
 	}
