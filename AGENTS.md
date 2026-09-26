@@ -613,6 +613,17 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
 - **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.2.0), `internal-api.openapi.yaml` (IA → NestJS, v0.2.0),
   `web-chat-api.openapi.yaml` (frontend → NestJS, v0.1.0) y `t1.0-backend-validation.md` (informe de T1.0).
 
+### Acoplamiento de configuracion con saaspa-backend (critico)
+
+El valor de `IA_TENANT_DEFAULT` de este servicio debe coincidir exactamente con `TENANT_ID` de
+`saaspa-backend`, que es el `tenantId` firmado en el turn token. La validacion de tenant es de fallo
+cerrado (A-03): si los valores difieren, este servicio responde **403** a todos los turnos.
+
+Del mismo modo, `saaspa.tenant.timezone` debe coincidir con `TENANT_TIMEZONE` de `saaspa-backend`
+(por defecto `America/Bogota`), que es la zona con la que el backend devuelve los instantes de
+`/api/internal/v1/availability` con offset explicito (C-02). Si las zonas difieren, las fechas
+relativas del prompt y la disponibilidad real se interpretan en zonas distintas.
+
 ---
 
 ## 12. Checklist de progreso
@@ -799,6 +810,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — feature/f1-integration-tests — T1.9: turno íntegro con Testcontainers Postgres (persistencia en `ia`) + ejecución real de `listarServicios` contra WireMock, con `ChatModel` guionizado (R14); A-18: retirados `spring-boot-starter-data-redis`/`…-redis-test`, el contenedor Redis de `TestcontainersConfiguration` y la config/`docker-compose` de Redis; D-01: `mustMatch` en el evaluador y arreglado el caso `R11-catalogo-precio` (el precio de catálogo SÍ debe copiarse desde la herramienta); README con el flujo de ramas antes de ramificar — verify verde (108 tests).
 - 2026-09-26 — fix/hermes-second-pass — segunda pasada de Hermes: A-20 (el deadline ahora cancela la llamada en vuelo con `Future.cancel(true)` sobre un `ExecutorService`), A-22 (`on-http-codes=408,429`: 408/429 sí se reintentan y el resto de 4xx no), C-12 (el contrato dice "un único tenant permitido"); A-14 (3 falsos positivos nuevos en el dataset, marcados como brecha); A-10 documentado como decisión pendiente antes de la Fase 2 (estado del handoff) y C-13 anotado; stack de Redis actualizado; A-19/A-21/A-23/D-02..D-04 marcados como nunca redactados — verify verde (111 tests).
 - 2026-09-26 — docs/f1-nestjs-orders — cierre de Fase 1: pedidos 1–3 reescritos en §11 con las decisiones A-10 (NestJS mantiene el estado del handoff por conversación), A-11 (`waId` fuera del contrato; identidad solo por el turn token), C-02 (`saaspa-IA` es la autoridad de zona horaria; `timezone`/`now` son contexto informativo) y A-04 documentado como limitación de un solo tenant; contrato chat-api sin `identity.waId` y con `timezone`/`now` aclarados; DTO `Identity` sin `waId`; criterio E2E de Fase 1 marcado como bloqueado por `saaspa-backend` — verify verde (111 tests).
+- 2026-09-26 — fix/prompt-brevity-and-turn-test — brevedad del catálogo (prompt v1: para "qué servicios tienen", resumir 3–5 destacados o preguntar por la línea, no volcar los 13) + caso `R10-catalogo-breve` en el dataset con `maxReplyChars` (nuevo tope de longitud en el evaluador, R15) + `ChatApiTurnIntegrationTest` (turno real contra `POST /api/v1/chat` con Testcontainers + WireMock + `ChatModel` guionizado) y contenedor Postgres único compartido en los tests (evita el agotamiento de recursos) — verify verde (116 tests).
 
 ---
 

@@ -52,9 +52,11 @@ public class CustomerAgentEvaluator {
 				: this.customerAgent.reply(turnToken, evalCase.message()).text();
 		List<String> violations = violations(reply, evalCase.forbid());
 		List<String> missing = missing(reply, evalCase.mustMatch());
-		boolean passed = observed.equals(evalCase.handoff()) && violations.isEmpty() && missing.isEmpty();
+		boolean tooLong = evalCase.maxReplyChars() != null && reply != null
+				&& reply.length() > evalCase.maxReplyChars();
+		boolean passed = observed.equals(evalCase.handoff()) && violations.isEmpty() && missing.isEmpty() && !tooLong;
 		return new EvalResult(evalCase.id(), evalCase.rule(), passed, evalCase.handoff(), observed, missing, violations,
-				reply);
+				tooLong, reply);
 	}
 
 	private static List<String> violations(String reply, List<String> forbid) {

@@ -13,9 +13,11 @@ import java.util.List;
  *     devuelve la herramienta)
  * @param forbid expresiones regulares que la respuesta NO debe contener
  * @param gap {@code true} si es una brecha conocida de {@code HandoffPolicy} (A-14) pendiente de arreglo
+ * @param maxReplyChars longitud maxima de la respuesta en caracteres ({@code null} = sin tope); mide la
+ *     brevedad (por ejemplo, no volcar el catalogo completo)
  */
 public record EvalCase(String id, String rule, String message, String handoff, List<String> mustMatch,
-		List<String> forbid, boolean gap) {
+		List<String> forbid, boolean gap, Integer maxReplyChars) {
 
 	public EvalCase {
 		mustMatch = mustMatch == null ? List.of() : List.copyOf(mustMatch);
