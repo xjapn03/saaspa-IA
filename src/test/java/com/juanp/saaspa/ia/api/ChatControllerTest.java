@@ -89,7 +89,7 @@ class ChatControllerTest {
 	void returnsAgentReply() throws Exception {
 		given(this.customerAgent.reply(any(TurnToken.class), any(String.class)))
 				.willReturn(new CustomerAgent.CustomerReply("El masaje relajante cuesta $ 120.000.",
-						"customer-agent.v1", "deepseek-flash", 1200, 80));
+						"customer-agent.v2", "deepseek-flash", 1200, 80));
 
 		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
 				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
@@ -115,7 +115,7 @@ class ChatControllerTest {
 		assertThat(turnLog.getValue().conversationId()).isEqualTo("conv-1");
 		assertThat(turnLog.getValue().channel()).isEqualTo("WEB_WIDGET");
 		assertThat(turnLog.getValue().agent()).isEqualTo("CLIENTAS");
-		assertThat(turnLog.getValue().promptVersion()).isEqualTo("customer-agent.v1");
+		assertThat(turnLog.getValue().promptVersion()).isEqualTo("customer-agent.v2");
 		assertThat(turnLog.getValue().model()).isEqualTo("deepseek-flash");
 		assertThat(turnLog.getValue().tokensIn()).isEqualTo(1200);
 		assertThat(turnLog.getValue().tokensOut()).isEqualTo(80);

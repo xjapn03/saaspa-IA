@@ -13,5 +13,5 @@ import org.springframework.core.io.Resource;
 @ConfigurationProperties("saaspa.agent")
 public record AgentProperties(
 		@DefaultValue("10") int memoryWindow,
-		@DefaultValue("classpath:prompts/customer-agent.v1.md") Resource customerPrompt) {
+		@DefaultValue("classpath:prompts/customer-agent.v2.md") Resource customerPrompt) {
 }

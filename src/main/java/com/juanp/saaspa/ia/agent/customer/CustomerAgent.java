@@ -35,7 +35,7 @@ import com.juanp.saaspa.ia.security.TurnToken;
 public class CustomerAgent {
 
 	/** Version del prompt del agente; se registra en cada turno (T1.6). */
-	public static final String PROMPT_VERSION = "customer-agent.v1";
+	public static final String PROMPT_VERSION = "customer-agent.v2";
 
 	private static final Locale LOCALE_CO = Locale.forLanguageTag("es-CO");
 
