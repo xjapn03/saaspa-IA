@@ -5,9 +5,12 @@ Es un servicio **separado** en **Java 21 + Spring Boot 4 + Spring AI 2.0** que a
 "cerebro" de los agentes conversacionales, mientras el backend **NestJS** (`saaspa-backend`)
 sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 
-> **Estado:** Fase 1 en curso (cerebro mínimo + chat web anónimo). Completadas T1.1–T1.7
-> (turn token, cliente HTTP, herramientas de lectura, endpoint de chat, agente CLIENTAS,
-> registro de turnos y handoff); pendientes T1.8 (dataset de evaluación) y el criterio E2E de la Fase 1.
+> **Estado:** **Fase 1 completada** (2026-09-26), de T1.0 a T1.10: cerebro mínimo + chat web anónimo con el
+> criterio de aceptación E2E validado contra el backend real (turn token, tenant, herramienta y LLM reales).
+> La evidencia del turno y la reconciliación de los contratos están en
+> [`docs/contracts/f1-e2e-validation.md`](./docs/contracts/f1-e2e-validation.md).
+> La Fase 2 (agenda por chat + cliente logueado) **no está abierta todavía**: espera al contenedor `ia-bot` y a
+> los valores de entorno de producción en `kamerinos-infra`.
 > El plan completo está en [`AI_WhatsApp_SaaS_Roadmap_2026.md`](./AI_WhatsApp_SaaS_Roadmap_2026.md).
 
 ## Qué es (y qué no es)
