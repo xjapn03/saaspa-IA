@@ -167,7 +167,7 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 | Spring AI | **2.0.1** vía `spring-ai-bom` | Starters: `spring-ai-starter-model-{proveedor}`, `spring-ai-starter-vector-store-{store}` |
 | Build | Maven (`./mvnw`) | `pom.xml` en la raíz del repo |
 | BD propia | PostgreSQL (esquema `ia`) + Flyway | pgvector desde la Fase 4 |
-| Redis | Redis estándar para idempotencia, rate limiting y caché | **No** es Redis Stack (ver trampas) |
+| Redis | **Retirado en T1.9** (no se usaba en `src/main`); vuelve en la **Fase 2** con uso real (idempotencia, rate limiting) | **No** es Redis Stack (ver trampas) |
 | LLM | **DeepSeek** (`deepseek-flash`) detrás de `ChatClient` | Soporta tool calling (verificado). Intercambiable por configuración |
 | Testing | JUnit (Boot 4), Testcontainers, WireMock, dataset `eval/` | Boot 4 usa Jackson 3 y JUnit 6 según sus guías de migración: verificar imports |
 | CI | GitHub Actions: `./mvnw -B verify` | |
@@ -701,8 +701,8 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - A-01 (timeouts/retry/deadline del LLM) — PR #13, ADR 0009.
 - A-02 (R10 en código: handoff antes del modelo, texto canónico) — PR #12.
 - A-03 (validación de `tenantId` con fallo cerrado, 403) — PR #14.
-- C-01 (= A-03), C-05/C-06 (README y contrato) — PR #11; C-07 (checklist) — PR #15; C-09 (= A-01) — PR #13; C-10 (dataset `eval/` y runner) — PR de T1.8; A-18 (Redis sin uso retirado) y D-01 (caso de precio del dataset) — PR de T1.9.
-- Pendientes de detalle (§6 del informe, aún no en el fichero): A-19, A-21, A-23, D-02, D-03, D-04. A-20, A-22, C-12 y C-13 están descritos en las anotaciones del informe; se incorporarán a esta tabla cuando se cierre el detalle.
+- C-01 (= A-03), C-05/C-06 (README y contrato) — PR #11; C-07 (checklist) — PR #15; C-09 (= A-01) — PR #13; C-10 (dataset `eval/` y runner) — PR de T1.8; A-18 (Redis sin uso retirado) y D-01 (caso de precio del dataset) — PR de T1.9; A-20 (cancelación real del deadline), A-22 (408/429 reintentables) y C-12 (contrato de tenant único) — PR de la segunda pasada.
+- **Referenciados en el informe pero nunca redactados** (la §6 se prometió en la intro y el documento terminó en §5: corte de generación): **A-19, A-21, A-23, D-02, D-03, D-04**. Sin detalle disponible; no se persiguen.
 
 | ID | Sev. | Se resuelve en | Resumen |
 |---|---|---|---|
@@ -712,11 +712,11 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | A-07 | Media | Fase 2 | Turnos no idempotentes (reintento NestJS duplica llamada/coste/memoria) |
 | A-08 | Media | Fase 2 | `turn_log` sin estado; turnos fallidos no se registran |
 | A-09 | Media-baja | Fase 2 | Memoria read-modify-write sin serialización por conversación |
-| A-10 | Media-baja | Fase 2 | Handoff sin estado: quién "engancha" con una persona |
+| A-10 | **Media** | **antes de abrir la Fase 2** (ver decisión abajo) | Handoff sin estado: quién "engancha" con una persona |
 | A-11 | Media-baja | Fase 4 (antes del pedido de identidad) | `waId` viaja en el cuerpo, no en el turn token |
 | A-12 | Baja | Fase 5 (el dataset de T1.8 ya cubre el caso) | Sin guarda de salida sobre precios |
 | A-13 | Baja | Fase 5 / despliegue | Health no refleja LLM/backend; la clave de salida puede ir vacía |
-| A-14 | Media-baja | Fase 5 (el dataset de T1.8 ya cubre los casos) | Listas de handoff hardcodeadas y sin medir precisión/recall |
+| A-14 | Media-baja | Fase 5 (el dataset de T1.8 ya cubre los casos) | Listas de handoff hardcodeadas y sin medir precisión/recall; T1.9 añadió más falsos positivos plausibles (`A14-fp-estoy-tomando`, `A14-fp-infecciones`, `A14-fp-cirugia`) marcados como brecha |
 | A-15 | Baja | Fase 5 | Sin correlación (`traceparent`/`X-Turn-Id`) ni métricas Micrometer |
 | A-16 | Baja | Fase 4 (RAG) | Catálogo del backend como contenido fiable (inyección indirecta) |
 | A-17 | Baja | Fase 4 | Sin retención/borrado de la memoria conversacional |
@@ -724,6 +724,25 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | C-03 | Baja | Higiene | `usage.tokensIn/Out` tipados `integer` pero el código puede emitir `null` |
 | C-04 | Baja | Higiene | Límite de mensaje 1000 (`web-chat`) vs 2000 (`chat-api`) |
 | C-11 | Baja | Proceso | Rama `fix/deprecations-and-handoff` mezcló deprecaciones + T1.7 |
+| C-13 | Media-baja | Fase 2 | ADR 0007 dice que se guardan los turnos finales, pero los turnos con handoff no se guardan en la memoria (efecto de A-02) |
+
+### Decisión pendiente antes de la Fase 2: estado del handoff (A-10)
+
+Con A-02, un tema sensible se responde en código y **no** llama al modelo, así que ese turno no deja
+rastro en la memoria (C-13). El handoff es hoy un flag por turno y el turno siguiente vuelve a
+empezar: nadie sabe que la clienta fue derivada y puede volver a ofrecer agendar. Antes de abrir la
+Fase 2 hay que decidir **quién guarda el estado del handoff**:
+
+- **(a) NestJS por conversación (recomendado):** el gateway ya tiene `ConversationState` por
+  conversación; allí vive el flag (motivo + `turnId`) y se consulta antes de llamar a este servicio.
+  Sobrevive a reinicios, es la autoridad de canales y no duplica estado. Coste: un pedido de contrato
+  más a NestJS (junto al turn token).
+- **(b) Campo de sesión que devuelva este servicio:** el contrato de chat devuelve
+  `handoff.requested` (y un flag de sesión) y **NestJS lo persiste y lo reenvía**; este servicio solo
+  lo propaga. Un solo sitio decide (el código de `HandoffPolicy`); coste: NestJS lo guarda/reenvía y
+  hay que versionar el contrato.
+
+No se implementa todavía: es una decisión de contrato que se revisa antes de la Fase 2.
 
 ---
 
@@ -757,6 +776,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-25 — docs/deferred-hermes-findings — sección "Hallazgos diferidos" en AGENTS.md + checklist corregido (C-07) + registro de cambios — verify verde (97 tests).
 - 2026-09-25 — feature/f1-eval-dataset — T1.8: dataset `eval/customer-agent.v1.jsonl` (R3, R10 ×3, R11, A-12, A-14 con sus falsos positivos/negativos) + runner `CustomerAgentEvaluator` y `EvalDataset`; en CI se ejercita con un `ChatModel` guionizado (R14) y la evaluación con LLM real queda para la Fase 5 — verify verde (105 tests).
 - 2026-09-26 — feature/f1-integration-tests — T1.9: turno íntegro con Testcontainers Postgres (persistencia en `ia`) + ejecución real de `listarServicios` contra WireMock, con `ChatModel` guionizado (R14); A-18: retirados `spring-boot-starter-data-redis`/`…-redis-test`, el contenedor Redis de `TestcontainersConfiguration` y la config/`docker-compose` de Redis; D-01: `mustMatch` en el evaluador y arreglado el caso `R11-catalogo-precio` (el precio de catálogo SÍ debe copiarse desde la herramienta); README con el flujo de ramas antes de ramificar — verify verde (108 tests).
+- 2026-09-26 — fix/hermes-second-pass — segunda pasada de Hermes: A-20 (el deadline ahora cancela la llamada en vuelo con `Future.cancel(true)` sobre un `ExecutorService`), A-22 (`on-http-codes=408,429`: 408/429 sí se reintentan y el resto de 4xx no), C-12 (el contrato dice "un único tenant permitido"); A-14 (3 falsos positivos nuevos en el dataset, marcados como brecha); A-10 documentado como decisión pendiente antes de la Fase 2 (estado del handoff) y C-13 anotado; stack de Redis actualizado; A-19/A-21/A-23/D-02..D-04 marcados como nunca redactados — verify verde (111 tests).
 
 ---
 

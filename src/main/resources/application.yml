@@ -30,8 +30,10 @@ spring:
         initial-interval: 500ms
         multiplier: 2
         max-interval: 2s
-      # Los 4xx son errores del cliente, no transitorios: no se reintentan.
-      exclude-on-http-codes: 400,401,403,404,408,409,422,429
+      # 408 (timeout) y 429 (rate limit) son transitorios: SÍ se reintentan.
+      on-http-codes: 408,429
+      # El resto de 4xx son errores del cliente, no transitorios: no se reintentan.
+      exclude-on-http-codes: 400,401,403,404,409,422
     chat:
       memory:
         repository:

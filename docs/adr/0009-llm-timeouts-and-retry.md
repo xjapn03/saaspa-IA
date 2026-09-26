@@ -17,13 +17,16 @@ reintentar durante minutos, con coste y con el turno bloqueado.
 - Timeouts HTTP explícitos para el cliente del modelo (`saaspa.llm.connect-timeout=3s`,
   `saaspa.llm.read-timeout=30s`) mediante un `RestClient.Builder` dedicado; el cliente del backend
   sigue con los suyos y no se toca.
-- Deadline por turno (`saaspa.llm.turn-deadline=35s`) que devuelve 504 si el turno se pasa del tope.
+- Deadline por turno (`saaspa.llm.turn-deadline=35s`) que devuelve 504 si el turno se pasa del tope y
+  **cancela** la llamada en vuelo (interrupción del hilo con `Future.cancel(true)`).
 
 ## Consecuencias
 
 - **Positivas:** coste y latencia acotados; un fallo del proveedor termina rápido y con 504 en lugar
   de reintentar sin límite.
-- **Negativas:** reintentos casi nulos ante 5xx transitorios del proveedor.
+- **Negativas:** reintentos casi nulos ante 5xx transitorios del proveedor; la cancelación del
+  deadline interrumpe el hilo, pero abortar de verdad la petición HTTP depende del cliente, así que
+  `saaspa.llm.read-timeout` sigue siendo el tope duro de la llamada.
 
 **Nota (no bloqueo):** tras A-02 los turnos de handoff ya no llaman al modelo, así que el deadline de
 35s aplica sobre todo a catálogo/disponibilidad. Queda como valor a revisar con los datos reales de

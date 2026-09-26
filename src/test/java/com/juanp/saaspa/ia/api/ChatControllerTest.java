@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
@@ -266,6 +267,33 @@ class ChatControllerTest {
 				.andExpect(status().isGatewayTimeout())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 				.andExpect(jsonPath("$.title").value("Modelo no disponible"));
+	}
+
+	@Test
+	@DisplayName("al expirar el deadline se cancela la llamada en vuelo al modelo")
+	void cancelsTheInFlightCallOnTimeout() throws Exception {
+		AtomicBoolean interrupted = new AtomicBoolean(false);
+		given(this.customerAgent.reply(any(TurnToken.class), any(String.class))).willAnswer(invocation -> {
+			try {
+				Thread.sleep(2000);
+			}
+			catch (InterruptedException ex) {
+				interrupted.set(true);
+				Thread.currentThread().interrupt();
+			}
+			return new CustomerAgent.CustomerReply("tarde", "customer-agent.v1", "deepseek-flash", 1, 1);
+		});
+
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("kamerinos", "CLIENTAS", "Que servicios tienen?")))
+				.andExpect(status().isGatewayTimeout());
+
+		for (int i = 0; i < 50 && !interrupted.get(); i++) {
+			Thread.sleep(20);
+		}
+		assertThat(interrupted).isTrue();
 	}
 
 	private static String bearer(Map<String, Object> claims) {
