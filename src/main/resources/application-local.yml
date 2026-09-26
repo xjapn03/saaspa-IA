@@ -1,12 +1,9 @@
-# Perfil `local`: apunta al docker-compose de desarrollo (pgvector pg15 + redis).
+# Perfil `local`: apunta al docker-compose de desarrollo (pgvector pg15).
 spring:
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/saaspa_ia}
     username: ${DATABASE_USER:saaspa}
     password: ${DATABASE_PASSWORD:saaspa}
-  data:
-    redis:
-      url: ${REDIS_URL:redis://localhost:6380}
 
 logging:
   level:

@@ -51,8 +51,10 @@ public class CustomerAgentEvaluator {
 				? this.handoffPolicy.canonicalReply(decision.reason())
 				: this.customerAgent.reply(turnToken, evalCase.message()).text();
 		List<String> violations = violations(reply, evalCase.forbid());
-		boolean passed = observed.equals(evalCase.handoff()) && violations.isEmpty();
-		return new EvalResult(evalCase.id(), evalCase.rule(), passed, evalCase.handoff(), observed, violations, reply);
+		List<String> missing = missing(reply, evalCase.mustMatch());
+		boolean passed = observed.equals(evalCase.handoff()) && violations.isEmpty() && missing.isEmpty();
+		return new EvalResult(evalCase.id(), evalCase.rule(), passed, evalCase.handoff(), observed, missing, violations,
+				reply);
 	}
 
 	private static List<String> violations(String reply, List<String> forbid) {
@@ -66,5 +68,18 @@ public class CustomerAgentEvaluator {
 			}
 		}
 		return List.copyOf(found);
+	}
+
+	private static List<String> missing(String reply, List<String> mustMatch) {
+		if (reply == null || mustMatch.isEmpty()) {
+			return List.copyOf(mustMatch == null ? List.of() : mustMatch);
+		}
+		List<String> missing = new ArrayList<>();
+		for (String pattern : mustMatch) {
+			if (!Pattern.compile(pattern).matcher(reply).find()) {
+				missing.add(pattern);
+			}
+		}
+		return List.copyOf(missing);
 	}
 }

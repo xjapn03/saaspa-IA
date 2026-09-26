@@ -77,7 +77,7 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 saaspa-IA/
 ├── AGENTS.md                    # fuente de verdad
 ├── pom.xml  mvnw  mvnw.cmd
-├── docker-compose.yml           # infra de desarrollo (pgvector pg15 + redis)
+├── docker-compose.yml           # infra de desarrollo (pgvector pg15)
 ├── .env.example
 ├── docs/
 │   ├── adr/                     # 0001..000N

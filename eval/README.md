@@ -13,6 +13,7 @@ ignoran.
 | `rule` | string | regla que cubre (`R3`, `R10`, `R11`, `A-12`, `A-14`, ...) |
 | `message` | string | mensaje de la clienta |
 | `handoff` | string | handoff esperado: `NONE` o `HEALTH_TOPIC` / `COMPLAINT` / `EXPLICIT_REQUEST` |
+| `mustMatch` | string[] | expresiones regulares que la respuesta **debe** contener (por ejemplo el precio que devuelve la herramienta) |
 | `forbid` | string[] | expresiones regulares que la respuesta **no** debe contener |
 | `gap` | boolean | `true` si es una brecha conocida de `HandoffPolicy` (A-14), pendiente de arreglo |
 

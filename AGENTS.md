@@ -650,7 +650,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] Registro de mensajes, tool calls y tokens en `ia` (`ia.turn_log` con tenant/conversación/canal/agente/prompt/modelo/tokens/latencia, `ia.tool_call_log` con estado y JSON acotado, memoria JDBC para los mensajes; fallos de escritura no tumban el turno — T1.6, 2026-09-24)
 - [x] Tests: unitarios, contrato (WireMock) y Testcontainers Postgres — 97 tests, 0 fallos (2026-09-25)
 - [x] T1.8: dataset `eval/customer-agent.v1.jsonl` + runner (`CustomerAgentEvaluator`; en CI corre con un `ChatModel` guionizado, y la evaluación con LLM real corre aparte — R14) — 2026-09-25
-- [ ] T1.9: prueba de integración E2E del turno (Testcontainers, `ChatModel` doble — R14)
+- [x] T1.9: prueba de integración del turno con Testcontainers Postgres (turno íntegro persistido + ejecución real de `listarServicios` contra WireMock; `ChatModel` guionizado — R14) — 2026-09-26
 - [ ] **(bloqueado) Criterio de aceptación E2E de la Fase 1:** chat web anónimo que devuelve el precio real desde
       la herramienta. Depende de los pedidos 1 a 3 de la sección 11 (turn token + `/api/internal/v1/*` +
       `POST /api/chat`); el resto de la Fase 1 avanza con WireMock.
@@ -701,7 +701,8 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - A-01 (timeouts/retry/deadline del LLM) — PR #13, ADR 0009.
 - A-02 (R10 en código: handoff antes del modelo, texto canónico) — PR #12.
 - A-03 (validación de `tenantId` con fallo cerrado, 403) — PR #14.
-- C-01 (= A-03), C-05/C-06 (README y contrato) — PR #11; C-07 (checklist) — PR #15; C-09 (= A-01) — PR #13; C-10 (dataset `eval/` y runner) — PR de T1.8.
+- C-01 (= A-03), C-05/C-06 (README y contrato) — PR #11; C-07 (checklist) — PR #15; C-09 (= A-01) — PR #13; C-10 (dataset `eval/` y runner) — PR de T1.8; A-18 (Redis sin uso retirado) y D-01 (caso de precio del dataset) — PR de T1.9.
+- Pendientes de detalle (§6 del informe, aún no en el fichero): A-19, A-21, A-23, D-02, D-03, D-04. A-20, A-22, C-12 y C-13 están descritos en las anotaciones del informe; se incorporarán a esta tabla cuando se cierre el detalle.
 
 | ID | Sev. | Se resuelve en | Resumen |
 |---|---|---|---|
@@ -719,7 +720,6 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | A-15 | Baja | Fase 5 | Sin correlación (`traceparent`/`X-Turn-Id`) ni métricas Micrometer |
 | A-16 | Baja | Fase 4 (RAG) | Catálogo del backend como contenido fiable (inyección indirecta) |
 | A-17 | Baja | Fase 4 | Sin retención/borrado de la memoria conversacional |
-| A-18 | Baja | Higiene (pronto) | `data-redis` y contenedor Redis sin uso en `src/main` |
 | C-02 | Media | Fase 2 (antes del pedido 1) | `locale`/`timezone`/`now` obligatorios pero ignorados por el código |
 | C-03 | Baja | Higiene | `usage.tokensIn/Out` tipados `integer` pero el código puede emitir `null` |
 | C-04 | Baja | Higiene | Límite de mensaje 1000 (`web-chat`) vs 2000 (`chat-api`) |
@@ -756,6 +756,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-25 — fix/a03-tenant-validation — A-03: `turnToken.tenantId()` validado contra `IA_TENANT_DEFAULT` con fallo cerrado (403) y README con el requisito de Java 21 vía SDKMAN — verify verde (97 tests).
 - 2026-09-25 — docs/deferred-hermes-findings — sección "Hallazgos diferidos" en AGENTS.md + checklist corregido (C-07) + registro de cambios — verify verde (97 tests).
 - 2026-09-25 — feature/f1-eval-dataset — T1.8: dataset `eval/customer-agent.v1.jsonl` (R3, R10 ×3, R11, A-12, A-14 con sus falsos positivos/negativos) + runner `CustomerAgentEvaluator` y `EvalDataset`; en CI se ejercita con un `ChatModel` guionizado (R14) y la evaluación con LLM real queda para la Fase 5 — verify verde (105 tests).
+- 2026-09-26 — feature/f1-integration-tests — T1.9: turno íntegro con Testcontainers Postgres (persistencia en `ia`) + ejecución real de `listarServicios` contra WireMock, con `ChatModel` guionizado (R14); A-18: retirados `spring-boot-starter-data-redis`/`…-redis-test`, el contenedor Redis de `TestcontainersConfiguration` y la config/`docker-compose` de Redis; D-01: `mustMatch` en el evaluador y arreglado el caso `R11-catalogo-precio` (el precio de catálogo SÍ debe copiarse desde la herramienta); README con el flujo de ramas antes de ramificar — verify verde (108 tests).
 
 ---
 
