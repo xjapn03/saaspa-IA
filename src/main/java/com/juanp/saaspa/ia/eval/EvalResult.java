@@ -10,9 +10,10 @@ import java.util.List;
  * @param passed si el caso cumplio todas las expectativas
  * @param handoffExpected handoff esperado ({@code NONE} o un motivo)
  * @param handoffObserved handoff observado
+ * @param missing patrones obligatorios que no aparecieron en la respuesta
  * @param violations patrones prohibidos encontrados en la respuesta
  * @param reply respuesta producida
  */
 public record EvalResult(String id, String rule, boolean passed, String handoffExpected, String handoffObserved,
-		List<String> violations, String reply) {
+		List<String> missing, List<String> violations, String reply) {
 }

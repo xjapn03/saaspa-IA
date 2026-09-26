@@ -9,12 +9,16 @@ import java.util.List;
  * @param rule regla que cubre ({@code R3}, {@code R10}, {@code R11}, {@code A-12}, {@code A-14}, ...)
  * @param message mensaje de la clienta
  * @param handoff handoff esperado: {@code NONE} o un motivo de {@code HandoffPolicy.Reason}
+ * @param mustMatch expresiones regulares que la respuesta DEBE contener (por ejemplo el precio que
+ *     devuelve la herramienta)
  * @param forbid expresiones regulares que la respuesta NO debe contener
  * @param gap {@code true} si es una brecha conocida de {@code HandoffPolicy} (A-14) pendiente de arreglo
  */
-public record EvalCase(String id, String rule, String message, String handoff, List<String> forbid, boolean gap) {
+public record EvalCase(String id, String rule, String message, String handoff, List<String> mustMatch,
+		List<String> forbid, boolean gap) {
 
 	public EvalCase {
+		mustMatch = mustMatch == null ? List.of() : List.copyOf(mustMatch);
 		forbid = forbid == null ? List.of() : List.copyOf(forbid);
 	}
 

@@ -1,12 +1,65 @@
 # Revisión de arquitectura y seguridad (borrador, solo lectura)
 
 - **Autor:** revisión externa (Hermes) a petición de la persona.
-- **Fecha:** 2026-09-25.
+- **Fecha:** 2026-09-25 (primera pasada).
 - **Ámbito:** repositorio `saaspa-IA`, rama `fix/deprecations-and-handoff` (árbol limpio, sin cambios locales).
 - **Naturaleza:** documento **de trabajo**, no es una ADR. Cada punto que se acepte debe convertirse en ADR
-  (regla R16) o en tarea del checklist antes de implementarse. **Nada de lo aquí propuesto está implementado.**
+  (regla R16) o en tarea del checklist antes de implementarse. **Parte de lo aquí propuesto ya está
+  implementado** (PRs #11 a #16): el estado real de cada hallazgo está en
+  [§ 0](#0-estado-a-2026-09-25-tarde-tras-los-pr-11-a-16) y los hallazgos nuevos de la segunda pasada en
+  [§ 6](#6-segunda-pasada-prs-1216-verificación-y-hallazgos-nuevos).
 - **Modo:** lectura. No se modificó, creó ni borró ningún archivo del repositorio salvo este; no se ejecutaron
   `git commit/push/checkout`, ni `gh` de escritura, ni builds.
+
+## 0. Estado a 2026-09-25 (tarde), tras los PR #11 a #16
+
+**Actualización de esta pasada.** Se revisan los PR #11 (`chore/hermes-review-housekeeping`), #12
+(`fix/a02-handoff-code-enforcement`), #13 (`fix/a01-llm-timeouts-retry`, con ADR 0009), #14
+(`fix/a03-tenant-validation`), #15 (`docs/deferred-hermes-findings`) y #16 (`feature/f1-eval-dataset`, T1.8),
+todos fusionados en `develop` (`a62e91b`). La rama de trabajo local es ahora `feature/f1-eval-dataset`; el
+árbol está limpio. Se verificó el código real de cada arreglo, no solo el mensaje del PR.
+
+| ID | Estado | Evidencia |
+|---|---|---|
+| A-01 | **Resuelto** | `application.yml:26-34` (`spring.ai.retry.max-attempts=2`, backoff 500ms ×2 máx. 2s, 4xx excluidos), `config/LlmClientConfig.java` + `LlmProperties` (`saaspa.llm.*`) y deadline por turno → 504 (`api/ChatController.java:132-152`, `ApiExceptionHandler:69-74`); ADR 0009; `config/LlmTimeoutRetryTest` |
+| A-02 | **Resuelto** | El handoff se evalúa **antes** del modelo y devuelve texto del código sin llamarlo (`api/ChatController.java:89-104`, `HandoffPolicy.canonicalReply`); `api/ChatControllerHandoffTest` afirma `usage.model == null` y 0 llamadas al modelo |
+| A-03 | **Resuelto** | `api/ChatController.java:78-81` con `TenantNotAllowedException` → 403 (`ApiExceptionHandler:76-80`) |
+| C-01 | **Resuelto** | = A-03 |
+| C-05, C-06 | **Resueltos** | README y `chat-api` (PR #11) |
+| C-07 | **Resuelto** | Checklist corregido y tests marcados (PR #15) |
+| C-09 | **Resuelto** | = A-01 |
+| C-10 | **Resuelto** | T1.8: `eval/customer-agent.v1.jsonl` (25 casos), `eval/README.md`, runner y tests (PR #16) |
+| A-04…A-11, A-13, A-15…A-18 | **Diferidos** | Tabla "Hallazgos diferidos" de `AGENTS.md` §13, con severidad y fase |
+| C-02, C-03, C-04, C-08, C-11 | **Diferidos** | Ídem |
+| **A-19…A-23, C-12, C-13, D-01…D-04** | **Nuevos (esta pasada)** | [§ 6](#6-segunda-pasada-prs-1216-verificación-y-hallazgos-nuevos) |
+
+### Lo que confirma la verificación
+
+- Los tres arreglos (A-01, A-02, A-03) atacan la causa, no el síntoma, y vienen con ADR 0009 (R16) y tests que
+  fallarían si se revirtieran: 105 tests en verde en `target/surefire-reports` (última ejecución 2026-09-25
+  20:45), lo que cuadra con el mensaje del PR.
+- A-02 quedó bien cerrado: ya no basta con "marcar el flag", **el texto sensible lo escribe el código** y el
+  modelo ni se invoca. El test doble que devolvería consejo de salud lo demuestra (`ChatControllerHandoffTest`).
+- El deadline propaga el contexto de seguridad al hilo virtual que ejecuta el turno
+  (`DelegatingSecurityContextExecutor`, `ChatController.java:44-45`), así que las herramientas siguen viendo el
+  turn token: era un riesgo real y está resuelto de forma correcta.
+- ADR 0009 es honesto al declarar su consecuencia negativa ("reintentos casi nulos ante 5xx transitorios").
+
+### Severidades que suben (o que no deberían darse por cubiertas)
+
+- **A-10 (handoff sin estado) sube a Media.** Con A-02, la conversación con un tema sensible ya no se guarda en
+  la memoria (ver C-13) y sigue sin haber estado: el turno siguiente no sabe que la clienta fue derivada y puede
+  volver a ofrecer agendar. Es lo primero que hay que definir antes de la Fase 2.
+- **A-14 (falsos positivos del handoff) sube a Media-baja**, como ya hizo `AGENTS.md`. Motivo nuevo y concreto:
+  antes de A-02, un falso positivo seguía dejando que el modelo respondiera; **ahora el falso positivo sustituye
+  una respuesta útil por un texto canónico**. El caso `A14-fp-medicamentos` ("¿venden medicamentos o solo hacen
+  servicios de estética?") recibe hoy "sobre temas de salud te atiende mejor una profesional": es una venta
+  perdida, no una anotación.
+- **A-12 no está cubierto por el dataset**: el único caso de precio de catálogo (`R11-catalogo-precio`) prohíbe
+  cualquier importe en la respuesta y, en la corrida con LLM real, la respuesta correcta sí lo lleva (D-01).
+  A-12 sigue abierto; el dataset todavía no lo mide bien.
+- **C-03 pasa de formal a visible**: en todo turno con handoff `usage.model` es `null` (`usage.model: {type:
+  string}` en el contrato) y hay un test que lo consagra (`ChatControllerHandoffTest:99`).
 
 ## Qué se leyó
 
@@ -73,6 +126,13 @@
 
 ### A-01 — La llamada al LLM no tiene timeout ni tope de reintentos propio (Alta)
 
+> **Actualización (PR #13 + ADR 0009, 2026-09-25): resuelto.** `spring.ai.retry.max-attempts=2` con backoff
+> acotado, `RestClient.Builder` dedicado con `saaspa.llm.connect-timeout/read-timeout` y deadline por turno →
+> 504, con tests que cuentan los reintentos reales contra WireMock. Quedan dos matices del arreglo, ahora en
+> [A-20](#a-20--el-deadline-por-turno-no-cancela-la-llamada-en-vuelo-media-baja) y
+> [A-22](#a-22--408-y-429-excluidos-de-reintento-y-son-los-dos-códigos-transitorios-baja): el deadline no
+> cancela la llamada en vuelo y su valor (35 s) es menor que el peor caso de un intento más un reintento.
+
 **Evidencia.** `src/main/resources/application.yml:17-25` configura modelo, temperatura y `max-tokens`, pero
 ningún timeout. `BackendProperties` sí declara timeouts explícitos
 (`src/main/java/com/juanp/saaspa/ia/config/BackendProperties.java:22-27`) y el cliente del backend los aplica
@@ -106,6 +166,13 @@ incumplimiento de una convención propia del repo.
 
 ### A-02 — El handoff de temas sensibles no puede garantizarse en código (Media-alta)
 
+> **Actualización (PR #12, 2026-09-25): resuelto.** El handoff se evalúa antes del modelo y, con un tema
+> sensible, no se llama al modelo: el texto lo escribe `HandoffPolicy.canonicalReply` y hay un test que afirma
+> cero llamadas. Efectos secundarios que abre el arreglo:
+> [C-13](#c-13--adr-0007-dice-que-se-guardan-los-turnos-finales-pero-los-turnos-con-handoff-no-se-guardan-media-baja)
+> (esos turnos ya no quedan en la memoria) y el aumento de severidad de A-14 (un falso positivo ahora deja a la
+> clienta sin respuesta útil).
+
 **Evidencia.** `api/ChatController.java:59-63` llama primero al agente y **después** evalúa
 `HandoffPolicy.evaluate(request.message().text())`; el texto que se devuelve es el del modelo
 (`ChatController.java:71-75`), sin sustitución ni filtrado. `HandoffPolicy` mira solo el mensaje de la clienta
@@ -128,6 +195,11 @@ y la arquitectura actual no lo controla (solo lo "anota").
    puede contener ese texto.
 
 ### A-03 — El `tenantId` no se valida contra ninguna lista permitida (Media)
+
+> **Actualización (PR #14, 2026-09-25): resuelto.** `ChatController` rechaza con 403 cualquier turno cuyo
+> `tenantId` no sea `IA_TENANT_DEFAULT` (fallo cerrado). Nota de precisión: es **un único tenant permitido**, no
+> una lista; conviene que el contrato lo diga así (ver C-12). La parte de config por tenant de A-04 sigue
+> abierta y es la que permitiría convertirlo en lista de verdad.
 
 **Evidencia.** `TurnContextValidator.validate` (`api/TurnContextValidator.java:25-51`) contrasta el cuerpo contra
 los claims, pero no comprueba que el tenant sea uno conocido. `TenantProperties.defaultTenant`

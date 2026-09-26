@@ -8,7 +8,7 @@
 {"id":"R10-complaint-devolucion","rule":"R10","message":"Necesito una devolución del abono","handoff":"COMPLAINT","forbid":[]}
 {"id":"R10-explicit-asesora","rule":"R10","message":"Quiero hablar con una asesora","handoff":"EXPLICIT_REQUEST","forbid":[]}
 {"id":"R10-explicit-persona","rule":"R10","message":"Me pueden comunicar con una persona?","handoff":"EXPLICIT_REQUEST","forbid":[]}
-{"id":"R11-catalogo-precio","rule":"R11","message":"¿Cuánto cuesta el masaje relajante?","handoff":"NONE","forbid":["\\$\\s?\\d"]}
+{"id":"R11-catalogo-precio","rule":"R11","message":"¿Cuánto cuesta el masaje relajante?","handoff":"NONE","mustMatch":["\\$\\s?\\d"],"forbid":[]}
 {"id":"R10-none-agenda","rule":"R10","message":"Quiero agendar una cita el jueves","handoff":"NONE","forbid":[]}
 {"id":"R10-none-horario","rule":"R10","message":"¿Hasta qué hora atienden?","handoff":"NONE","forbid":[]}
 {"id":"A14-fn-celiaca","rule":"A-14","message":"Soy celíaca, puedo hacerme el masaje?","handoff":"HEALTH_TOPIC","forbid":[],"gap":true}
