@@ -662,6 +662,8 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
   `IA_BOT_API_KEY`; además `LLM_API_KEY`, `BACKEND_URL`, `DATABASE_URL` e `IA_TENANT_DEFAULT=kamerinos`.
   (`REDIS_URL` ya no aplica: Redis se retiró en T1.9/A-18 y volverá en la Fase 2 con uso real.)
 - Lo que falta es operativo, no de contrato: los **valores reales** en el despliegue (kamerinos-infra).
+- Los acoples con `saaspa-backend` (tenant, zona horaria y claves del turn token) están detallados, en espejo
+  de su sección 6, en **11.6**.
 
 ### 11.5 Otros repos y contratos
 
@@ -675,16 +677,36 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
   `web-chat-api.openapi.yaml` (frontend → NestJS, v0.2.0), `f1-e2e-validation.md` (cierre de la Fase 1 y
   reconciliación) y `t1.0-backend-validation.md` (informe histórico de T1.0, superado).
 
-### Acoplamiento de configuracion con saaspa-backend (critico)
+### 11.6 Acoplamiento de configuracion con saaspa-backend (critico)
 
-El valor de `IA_TENANT_DEFAULT` de este servicio debe coincidir exactamente con `TENANT_ID` de
-`saaspa-backend`, que es el `tenantId` firmado en el turn token. La validacion de tenant es de fallo
-cerrado (A-03): si los valores difieren, este servicio responde **403** a todos los turnos.
+Espejo, desde este lado del acople, de la tabla de acoplamientos de `saaspa-backend/AGENTS.md` sección 6;
+cierra el pedido que ese repositorio anota en su sección 9. Los tres valores viajan por variables de entorno
+del **mismo despliegue**, así que `kamerinos-infra` debe inyectarlos de forma coherente en los dos
+contenedores (`backend` e `ia-bot`).
 
-Del mismo modo, `saaspa.tenant.timezone` debe coincidir con `TENANT_TIMEZONE` de `saaspa-backend`
-(por defecto `America/Bogota`), que es la zona con la que el backend devuelve los instantes de
-`/api/internal/v1/availability` con offset explicito (C-02). Si las zonas difieren, las fechas
-relativas del prompt y la disponibilidad real se interpretan en zonas distintas.
+| Este repo | `saaspa-backend` | Consecuencia si no coinciden |
+|---|---|---|
+| `IA_TENANT_DEFAULT` (`saaspa.tenant.default`; default `kamerinos`) | `TENANT_ID` (default `kamerinos`) | Fallo **cerrado**: este servicio responde **403** a todos los turnos (A-03). `ChatController` compara el `tenantId` **firmado en el turn token** con `saaspa.tenant.default`. |
+| `saaspa.tenant.timezone` (`IA_TENANT_TIMEZONE`; default `America/Bogota`) | `TENANT_TIMEZONE` (default `America/Bogota`) | Fallo **silencioso**: las fechas relativas del prompt y la disponibilidad real se interpretan en zonas distintas. No hay 403 ni error visible (C-02). |
+| `TURN_TOKEN_KEY_CURRENT_PUBLIC_KEY` / `TURN_TOKEN_KEY_PREVIOUS_PUBLIC_KEY` (cada una con su `TURN_TOKEN_KEY_CURRENT_KID` / `_PREVIOUS_KID`) | `TURN_TOKEN_KID` / `TURN_TOKEN_PRIVATE_KEY` | **401** en todos los turnos: el `kid` del token no está entre las claves públicas configuradas (`TurnTokenDecoderFactory`). |
+
+Notas del lado de este repo:
+
+- La identidad del turno (incluido `tenantId`) sale de los claims **firmados** del turn token, nunca del
+  cuerpo de la petición ni de argumentos generados por el modelo (R1). El acople es con el valor con el que
+  NestJS **firma**, no con lo que envíe el chat.
+- `saaspa-IA` es la **autoridad de la zona horaria** (C-02): el prompt usa `saaspa.tenant.timezone` para las
+  fechas relativas (`LocalDate.now(zoneId)`, R13) y el backend devuelve los instantes de
+  `/api/internal/v1/availability` con offset explícito calculado con `Intl/ICU` desde `TENANT_TIMEZONE`. Un
+  desacople aquí no rompe el servicio: responde con la fecha o la hora equivocada.
+- El turn token es ES256 (ADR 0006). Este servicio solo lo verifica con la clave pública de su `kid` y lo
+  reenvía tal cual en cada llamada interna. La rotación usa dos ranuras (`current`/`previous`), pero el
+  backend todavía tiene **una sola ranura de `kid`** (T1.10: `docs/contracts/f1-e2e-validation.md`), así que
+  hoy no se puede rotar la clave sin cortar el servicio.
+- Verificación antes de desplegar: que `TENANT_ID` del `backend` y `IA_TENANT_DEFAULT` del `ia-bot` sean
+  idénticos, y que `TENANT_TIMEZONE` y `saaspa.tenant.timezone` (hoy `IA_TENANT_TIMEZONE`) también.
+  `./mvnw -B verify` cubre por pruebas el 403 del tenant y el 401 de las claves, pero **no** puede detectar
+  un desacople de zona horaria entre dos despliegues.
 
 ---
 
@@ -697,6 +719,9 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] README reescrito para la arquitectura NestJS + Java (2026-09-23)
 - [x] Proyecto generado con Spring Initializr: Boot 4.1.1, Java 21, BOM de Spring AI 2.0.1 (pom por corregir)
 - [x] Auditoría inicial del `pom.xml` y del repo (hallazgos en la sección 7)
+- [x] Acoplamiento con `saaspa-backend` documentado desde este lado y en espejo de su sección 6
+      (`IA_TENANT_DEFAULT` ↔ `TENANT_ID` con 403, `saaspa.tenant.timezone` ↔ `TENANT_TIMEZONE` con fallo
+      silencioso y las claves del turn token ↔ `TURN_TOKEN_KID` con 401) — ver **11.6**, 2026-09-26
 
 ### Entorno y flujo de trabajo
 - [x] `gh` autenticado como `xjapn03` (SSH, scopes `repo`, `read:org`, `admin:public_key`, `gist`) y documentado (2026-09-23)
@@ -879,6 +904,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — fix/prompt-brevity-and-turn-test — brevedad del catálogo (prompt v1: para "qué servicios tienen", resumir 3–5 destacados o preguntar por la línea, no volcar los 13) + caso `R10-catalogo-breve` en el dataset con `maxReplyChars` (nuevo tope de longitud en el evaluador, R15) + `ChatApiTurnIntegrationTest` (turno real contra `POST /api/v1/chat` con Testcontainers + WireMock + `ChatModel` guionizado) y contenedor Postgres único compartido en los tests (evita el agotamiento de recursos) — verify verde (116 tests).
 - 2026-09-26 — chore/prompt-v2-and-whatsapp-finding — versionado del prompt: el cambio de brevedad pasa a `prompts/customer-agent.v2.md` (v1 vuelve a su contenido original) y suben `PROMPT_VERSION`, `AgentProperties` y `application.yml` a v2; nuevo hallazgo diferido **A-24** (Fase 4): el agente formatea en Markdown estándar y WhatsApp no lo interpreta, hace falta salida consciente del canal; `eval/README.md` anota el prompt objetivo — verify verde (116 tests).
 - 2026-09-26 — docs/f1-closeout-and-contract-reconciliation — T1.10 (cierre de la Fase 1): informe `docs/contracts/f1-e2e-validation.md` con la evidencia real del criterio E2E recuperada del volumen local (`ia.turn_log`: turno `WEB_WIDGET`/`CLIENTAS`, `customer-agent.v1`, `deepseek-flash`, 3750/317 tokens, 3611 ms; `ia.tool_call_log`: `listarServicios` OK en 65 ms) y reconciliación contra `saaspa-backend@develop@9fc8b12`; contratos a chat-api v0.5.0, internal-api v0.3.0 (403 de tenant, `{idOrSlug}`, `featured` como texto, disponibilidad con offset) y web-chat-api v0.2.0 (413/429/403 reales, cookie de sesión, handoff omitido); AGENTS.md §7/§11/§12/§13 al día (Fase 1 cerrada, **A-10** y **C-02** resueltos, **A-08** corroborado, `REDIS_URL` retirado, 116 tests) y README — verify verde (116 tests).
+- 2026-09-26 — docs/backend-tenant-coupling-note — §11.6: el acoplamiento con `saaspa-backend` pasa a ser una tabla en espejo de su sección 6 (tenant con fallo cerrado 403, zona horaria con fallo silencioso, claves del turn token con 401), se añade el acople de claves/`kid` que faltaba, dónde se hace cumplir en código y la verificación previa al despliegue; cierra el pedido de `saaspa-backend/AGENTS.md` sección 9 — verify verde (116 tests).
 
 ---
 
