@@ -116,15 +116,23 @@ components:
             kind: { type: string, enum: [ANONYMOUS, USER] }
             userId: { type: string }
             role: { type: string, enum: [CLIENTE, EMPLEADO, ADMIN] }
-            waId: { type: string }
         message:
           type: object
           required: [text]
           properties:
             text: { type: string, maxLength: 2000 }
         locale: { type: string, example: es-CO }
-        timezone: { type: string, example: America/Bogota }
-        now: { type: string, format: date-time }
+        timezone:
+          type: string
+          example: America/Bogota
+          description: >-
+            Contexto informativo para el LLM. La autoridad de la zona horaria es saaspa-IA
+            (saaspa.tenant.timezone); no se usa para validar fechas ni disponibilidad.
+        now:
+          type: string
+          format: date-time
+          description: >-
+            Contexto informativo para el LLM. No es la fuente de verdad del reloj de saaspa-IA.
     ChatResponse:
       type: object
       required: [turnId, reply]

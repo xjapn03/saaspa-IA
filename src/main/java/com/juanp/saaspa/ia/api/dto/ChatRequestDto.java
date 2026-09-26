@@ -51,15 +51,14 @@ public record ChatRequestDto(
 	}
 
 	/**
-	 * Identidad resuelta por NestJS.
+	 * Identidad resuelta por NestJS. El {@code waId} de WhatsApp no viaja aqui: NestJS lo resuelve por su
+	 * lado (ADR 0005) y firma el {@code userId} en el turn token (A-11).
 	 *
 	 * @param kind tipo de identidad
 	 * @param userId identificador del usuario, solo si {@code kind = USER}
 	 * @param role rol del usuario, solo si {@code kind = USER}
-	 * @param waId identificador de WhatsApp, solo en ese canal
 	 */
-	public record Identity(@NotNull IdentityKind kind, @Size(max = 64) String userId, TurnToken.Role role,
-			@Size(max = 32) String waId) {
+	public record Identity(@NotNull IdentityKind kind, @Size(max = 64) String userId, TurnToken.Role role) {
 	}
 
 	/**
