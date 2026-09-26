@@ -23,6 +23,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.retry.RetryTemplate;
 import org.springframework.util.backoff.ExponentialBackOff;
+import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -108,6 +109,40 @@ class LlmTimeoutRetryTest {
 		});
 	}
 
+	@Test
+	@DisplayName("un 429 (transitorio) se reintenta")
+	void retriesTransientRateLimit() {
+		deepseek.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+				.willReturn(aResponse()
+						.withStatus(429)
+						.withHeader("Content-Type", "application/json")
+						.withBody("{\"error\":{\"message\":\"rate limit\"}}")));
+
+		retryRunner().run(context -> {
+			assertThatThrownBy(() -> model(context).call(new Prompt("Hola")))
+					.isInstanceOf(RuntimeException.class);
+
+			assertThat(deepseek.getAllServeEvents().size()).isEqualTo(3);
+		});
+	}
+
+	@Test
+	@DisplayName("un 400 (error del cliente) no se reintenta")
+	void doesNotRetryBadRequest() {
+		deepseek.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+				.willReturn(aResponse()
+						.withStatus(400)
+						.withHeader("Content-Type", "application/json")
+						.withBody("{\"error\":{\"message\":\"bad request\"}}")));
+
+		retryRunner().run(context -> {
+			assertThatThrownBy(() -> model(context).call(new Prompt("Hola")))
+					.isInstanceOf(RuntimeException.class);
+
+			assertThat(deepseek.getAllServeEvents().size()).isEqualTo(1);
+		});
+	}
+
 	private ApplicationContextRunner retryRunner() {
 		return new ApplicationContextRunner()
 				.withConfiguration(AutoConfigurations.of(SpringAiRetryAutoConfiguration.class))
@@ -117,7 +152,8 @@ class LlmTimeoutRetryTest {
 						"spring.ai.retry.backoff.initial-interval=500ms",
 						"spring.ai.retry.backoff.multiplier=2",
 						"spring.ai.retry.backoff.max-interval=2s",
-						"spring.ai.retry.exclude-on-http-codes=400,401,403,404,408,409,422,429",
+						"spring.ai.retry.on-http-codes=408,429",
+						"spring.ai.retry.exclude-on-http-codes=400,401,403,404,409,422",
 						"saaspa.llm.connect-timeout=2s",
 						"saaspa.llm.read-timeout=500ms");
 	}
@@ -127,6 +163,7 @@ class LlmTimeoutRetryTest {
 				.baseUrl(deepseek.baseUrl())
 				.apiKey("test-key")
 				.restClientBuilder(context.getBean(RestClient.Builder.class))
+				.responseErrorHandler(context.getBean(ResponseErrorHandler.class))
 				.build();
 		return DeepSeekChatModel.builder()
 				.deepSeekApi(api)

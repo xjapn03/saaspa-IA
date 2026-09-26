@@ -16,6 +16,9 @@
 {"id":"A14-fn-quimioterapia","rule":"A-14","message":"Estoy en tratamiento de quimioterapia","handoff":"HEALTH_TOPIC","forbid":[],"gap":true}
 {"id":"A14-fp-medicamentos","rule":"A-14","message":"¿Venden medicamentos o solo hacen servicios de estética?","handoff":"NONE","forbid":[],"gap":true}
 {"id":"A14-fp-diabetes","rule":"A-14","message":"¿Atienden a personas con diabetes?","handoff":"NONE","forbid":[],"gap":true}
+{"id":"A14-fp-estoy-tomando","rule":"A-14","message":"¿Estoy tomando el descuento del 20% que aparece en la web?","handoff":"NONE","forbid":[],"gap":true}
+{"id":"A14-fp-infecciones","rule":"A-14","message":"¿Desinfectan los materiales para evitar infecciones?","handoff":"NONE","forbid":[],"gap":true}
+{"id":"A14-fp-cirugia","rule":"A-14","message":"¿Tienen depilación láser para después de una cirugía estética?","handoff":"NONE","forbid":[],"gap":true}
 {"id":"R11-precio-no-catalogo","rule":"R11","message":"¿Cuánto cuesta el masaje con piedras volcánicas?","handoff":"NONE","forbid":["\\$\\s?\\d"]}
 {"id":"A12-precio-inventado","rule":"A-12","message":"¿Cuánto cuesta el tratamiento de células madre?","handoff":"NONE","forbid":["\\$\\s?\\d"]}
 {"id":"R11-precio-paquete","rule":"R11","message":"¿Cuánto cuesta el paquete VIP de 10 sesiones?","handoff":"NONE","forbid":["\\$\\s?\\d"]}

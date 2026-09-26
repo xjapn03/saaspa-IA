@@ -12,9 +12,9 @@ info:
     Autenticacion: cabecera de servicio X-Internal-Api-Key con el valor de IA_BOT_API_KEY
     (NestJS -> IA; clave distinta de INTERNAL_API_KEY, que es IA -> NestJS) mas el turn token
     firmado en Authorization: Bearer.
-    Reglas: el tenantId del cuerpo se valida contra la lista permitida de este servicio
-    (IA_TENANT_DEFAULT); la identidad real es la del turn token y los campos del cuerpo nunca
-    sustituyen a sus claims.
+    Reglas: el tenantId del turno se valida contra el unico tenant permitido por este servicio
+    (saaspa.tenant.default, por defecto kamerinos via IA_TENANT_DEFAULT): si no coincide se responde
+    403. La identidad real es la del turn token y los campos del cuerpo nunca sustituyen a sus claims.
     Implementado en la Fase 1 (v0.3.0): el servicio contrasta tenantId, conversationId, channel,
     agent e identidad del cuerpo con los claims del turn token y responde 400 si no coinciden
     (regla R1); el agente ADMIN todavia no existe y responde 501.

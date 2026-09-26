@@ -1,16 +1,16 @@
 package com.juanp.saaspa.ia.api;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
-import org.springframework.security.concurrent.DelegatingSecurityContextExecutor;
+import org.springframework.security.concurrent.DelegatingSecurityContextExecutorService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,9 +39,10 @@ public class ChatController {
 	/**
 	 * Executor para aplicar el deadline del turno: hilos virtuales y propagacion del contexto de
 	 * seguridad, de modo que las herramientas (que leen {@code CurrentTurnToken}) sigan funcionando
-	 * dentro de la llamada al agente.
+	 * dentro de la llamada al agente. Es un {@link ExecutorService} para poder cancelar la llamada en
+	 * vuelo cuando expira el deadline (A-20).
 	 */
-	private static final Executor TURN_EXECUTOR = new DelegatingSecurityContextExecutor(
+	private static final ExecutorService TURN_EXECUTOR = new DelegatingSecurityContextExecutorService(
 			Executors.newVirtualThreadPerTaskExecutor());
 
 	private final CustomerAgent customerAgent;
@@ -127,27 +128,33 @@ public class ChatController {
 
 	/**
 	 * Llama al agente con un deadline por turno (ADR 0009): si se supera
-	 * {@code saaspa.llm.turn-deadline}, el turno falla con {@link LlmTimeoutException} (504).
+	 * {@code saaspa.llm.turn-deadline}, se <strong>cancela</strong> la llamada en vuelo (interrupcion
+	 * del hilo) y el turno falla con {@link LlmTimeoutException} (504).
 	 */
 	private CustomerAgent.CustomerReply replyWithDeadline(TurnToken turnToken, String message) {
+		Future<CustomerAgent.CustomerReply> future = TURN_EXECUTOR
+				.submit(() -> this.customerAgent.reply(turnToken, message));
 		try {
-			return CompletableFuture
-					.supplyAsync(() -> this.customerAgent.reply(turnToken, message), TURN_EXECUTOR)
-					.orTimeout(this.llmProperties.turnDeadline().toMillis(), TimeUnit.MILLISECONDS)
-					.join();
+			return future.get(this.llmProperties.turnDeadline().toMillis(), TimeUnit.MILLISECONDS);
 		}
-		catch (CompletionException ex) {
+		catch (TimeoutException ex) {
+			future.cancel(true);
+			throw new LlmTimeoutException("El modelo no respondio a tiempo");
+		}
+		catch (InterruptedException ex) {
+			future.cancel(true);
+			Thread.currentThread().interrupt();
+			throw new LlmTimeoutException("El turno fue interrumpido");
+		}
+		catch (ExecutionException ex) {
 			Throwable cause = ex.getCause();
-			if (cause instanceof TimeoutException) {
-				throw new LlmTimeoutException("El modelo no respondio a tiempo");
-			}
 			if (cause instanceof RuntimeException runtimeException) {
 				throw runtimeException;
 			}
 			if (cause instanceof Error error) {
 				throw error;
 			}
-			throw ex;
+			throw new IllegalStateException("Fallo inesperado al llamar al agente", cause);
 		}
 	}
 }
