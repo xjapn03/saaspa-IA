@@ -12,8 +12,9 @@ import java.util.List;
  * @param handoffObserved handoff observado
  * @param missing patrones obligatorios que no aparecieron en la respuesta
  * @param violations patrones prohibidos encontrados en la respuesta
+ * @param tooLong {@code true} si la respuesta supero {@code maxReplyChars}
  * @param reply respuesta producida
  */
 public record EvalResult(String id, String rule, boolean passed, String handoffExpected, String handoffObserved,
-		List<String> missing, List<String> violations, String reply) {
+		List<String> missing, List<String> violations, boolean tooLong, String reply) {
 }

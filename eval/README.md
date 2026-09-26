@@ -15,6 +15,7 @@ ignoran.
 | `handoff` | string | handoff esperado: `NONE` o `HEALTH_TOPIC` / `COMPLAINT` / `EXPLICIT_REQUEST` |
 | `mustMatch` | string[] | expresiones regulares que la respuesta **debe** contener (por ejemplo el precio que devuelve la herramienta) |
 | `forbid` | string[] | expresiones regulares que la respuesta **no** debe contener |
+| `maxReplyChars` | integer? | longitud máxima de la respuesta en caracteres (`null`/ausente = sin tope); mide la brevedad |
 | `gap` | boolean | `true` si es una brecha conocida de `HandoffPolicy` (A-14), pendiente de arreglo |
 
 ## Qué cubre

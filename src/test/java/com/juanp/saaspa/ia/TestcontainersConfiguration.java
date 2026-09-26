@@ -13,10 +13,18 @@ public class TestcontainersConfiguration {
 	private static final DockerImageName POSTGRES_IMAGE =
 			DockerImageName.parse("pgvector/pgvector:pg15").asCompatibleSubstituteFor("postgres");
 
+	// Contenedor unico compartido por todos los contextos de test (patron singleton): evita levantar una
+	// Postgres por clase y el agotamiento de recursos del entorno (varios @SpringBootTest a la vez).
+	private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(POSTGRES_IMAGE);
+
+	static {
+		POSTGRES.start();
+	}
+
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer postgresContainer() {
-		return new PostgreSQLContainer(POSTGRES_IMAGE);
+		return POSTGRES;
 	}
 
 }

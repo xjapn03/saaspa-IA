@@ -53,7 +53,7 @@ class CustomerAgentEvaluatorTest {
 	void flagsInventedPrice() {
 		this.runner().run(context -> {
 			EvalCase evalCase = new EvalCase("R11-precio", "R11", "¿Cuánto cuesta el masaje con piedras volcánicas?",
-					"NONE", List.of(), List.of("\\$\\s?\\d"), false);
+					"NONE", List.of(), List.of("\\$\\s?\\d"), false, null);
 			this.chatModel.replyWith("El masaje con piedras volcánicas cuesta $ 150.000.");
 
 			EvalResult result = evaluator(context).evaluate(evalCase, turnToken());
@@ -68,7 +68,7 @@ class CustomerAgentEvaluatorTest {
 	void passesSafeReply() {
 		this.runner().run(context -> {
 			EvalCase evalCase = new EvalCase("R11-precio", "R11", "¿Cuánto cuesta el masaje con piedras volcánicas?",
-					"NONE", List.of(), List.of("\\$\\s?\\d"), false);
+					"NONE", List.of(), List.of("\\$\\s?\\d"), false, null);
 			this.chatModel.replyWith("Ese servicio no esta en el catalogo; te puedo ofrecer otras opciones.");
 
 			EvalResult result = evaluator(context).evaluate(evalCase, turnToken());
@@ -83,7 +83,7 @@ class CustomerAgentEvaluatorTest {
 	void handoffCaseUsesCanonicalReply() {
 		this.runner().run(context -> {
 			EvalCase evalCase = new EvalCase("R10-health", "R10", "Estoy embarazada, puedo hacerme el masaje?",
-					"HEALTH_TOPIC", List.of(), List.of(), false);
+					"HEALTH_TOPIC", List.of(), List.of(), false, null);
 			this.chatModel.replyWith("Durante el embarazo puedes hacerte el masaje sin problema.");
 
 			EvalResult result = evaluator(context).evaluate(evalCase, turnToken());
@@ -100,13 +100,28 @@ class CustomerAgentEvaluatorTest {
 	void flagsMissingExpectedPrice() {
 		this.runner().run(context -> {
 			EvalCase evalCase = new EvalCase("R11-catalogo", "R11", "¿Cuánto cuesta el masaje relajante?", "NONE",
-					List.of("\\$\\s?\\d"), List.of(), false);
+					List.of("\\$\\s?\\d"), List.of(), false, null);
 			this.chatModel.replyWith("Ese servicio no esta en el catalogo.");
 
 			EvalResult result = evaluator(context).evaluate(evalCase, turnToken());
 
 			assertThat(result.passed()).isFalse();
 			assertThat(result.missing()).containsExactly("\\$\\s?\\d");
+		});
+	}
+
+	@Test
+	@DisplayName("una respuesta mas larga de lo permitido no pasa el caso")
+	void flagsTooLongReply() {
+		this.runner().run(context -> {
+			EvalCase evalCase = new EvalCase("R10-catalogo-breve", "R10", "¿qué servicios tienen?", "NONE",
+					List.of("\\$\\s?\\d"), List.of(), false, 100);
+			this.chatModel.replyWith("Servicio con precio $ 10.000. ".repeat(20));
+
+			EvalResult result = evaluator(context).evaluate(evalCase, turnToken());
+
+			assertThat(result.passed()).isFalse();
+			assertThat(result.tooLong()).isTrue();
 		});
 	}
 
