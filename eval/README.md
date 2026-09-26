@@ -2,6 +2,9 @@
 
 Documenta la evaluación del agente (tarea T1.8) y crece con cada cambio de comportamiento (R15).
 
+Los casos corresponden al prompt **`customer-agent.v2`** (2026-09-26). Al subir la versión del prompt hay
+que revisar si el dataset sigue cubriendo el comportamiento nuevo (R15).
+
 ## Formato
 
 `customer-agent.v1.jsonl`: un caso por línea (JSON). Las líneas vacías y las que empiezan por `#` se

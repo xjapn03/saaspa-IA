@@ -750,6 +750,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | C-04 | Baja | Higiene | Límite de mensaje 1000 (`web-chat`) vs 2000 (`chat-api`) |
 | C-11 | Baja | Proceso | Rama `fix/deprecations-and-handoff` mezcló deprecaciones + T1.7 |
 | C-13 | Media-baja | Fase 2 | ADR 0007 dice que se guardan los turnos finales, pero los turnos con handoff no se guardan en la memoria (efecto de A-02) |
+| A-24 | Media | Fase 4 (WhatsApp real) | El agente formatea con Markdown estándar (`**negrita**`, `##` encabezados, tablas), que WhatsApp **no** interpreta (usa `*un*` asterisco y no admite encabezados ni tablas): hace falta **salida consciente del canal** (Markdown para el chat web, sintaxis de WhatsApp para WhatsApp), no el mismo texto para los dos. Hallazgo de la prueba E2E real |
 
 ### Decisión pendiente antes de la Fase 2: estado del handoff (A-10)
 
@@ -811,6 +812,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — fix/hermes-second-pass — segunda pasada de Hermes: A-20 (el deadline ahora cancela la llamada en vuelo con `Future.cancel(true)` sobre un `ExecutorService`), A-22 (`on-http-codes=408,429`: 408/429 sí se reintentan y el resto de 4xx no), C-12 (el contrato dice "un único tenant permitido"); A-14 (3 falsos positivos nuevos en el dataset, marcados como brecha); A-10 documentado como decisión pendiente antes de la Fase 2 (estado del handoff) y C-13 anotado; stack de Redis actualizado; A-19/A-21/A-23/D-02..D-04 marcados como nunca redactados — verify verde (111 tests).
 - 2026-09-26 — docs/f1-nestjs-orders — cierre de Fase 1: pedidos 1–3 reescritos en §11 con las decisiones A-10 (NestJS mantiene el estado del handoff por conversación), A-11 (`waId` fuera del contrato; identidad solo por el turn token), C-02 (`saaspa-IA` es la autoridad de zona horaria; `timezone`/`now` son contexto informativo) y A-04 documentado como limitación de un solo tenant; contrato chat-api sin `identity.waId` y con `timezone`/`now` aclarados; DTO `Identity` sin `waId`; criterio E2E de Fase 1 marcado como bloqueado por `saaspa-backend` — verify verde (111 tests).
 - 2026-09-26 — fix/prompt-brevity-and-turn-test — brevedad del catálogo (prompt v1: para "qué servicios tienen", resumir 3–5 destacados o preguntar por la línea, no volcar los 13) + caso `R10-catalogo-breve` en el dataset con `maxReplyChars` (nuevo tope de longitud en el evaluador, R15) + `ChatApiTurnIntegrationTest` (turno real contra `POST /api/v1/chat` con Testcontainers + WireMock + `ChatModel` guionizado) y contenedor Postgres único compartido en los tests (evita el agotamiento de recursos) — verify verde (116 tests).
+- 2026-09-26 — chore/prompt-v2-and-whatsapp-finding — versionado del prompt: el cambio de brevedad pasa a `prompts/customer-agent.v2.md` (v1 vuelve a su contenido original) y suben `PROMPT_VERSION`, `AgentProperties` y `application.yml` a v2; nuevo hallazgo diferido **A-24** (Fase 4): el agente formatea en Markdown estándar y WhatsApp no lo interpreta, hace falta salida consciente del canal; `eval/README.md` anota el prompt objetivo — verify verde (116 tests).
 
 ---
 

@@ -88,7 +88,7 @@ class CustomerAgentTest {
 					.reply(turnToken(TurnToken.Channel.WEB_WIDGET, "conv-1"), "Cuanto cuesta?");
 
 			assertThat(reply.text()).isEqualTo("El masaje relajante cuesta $ 120.000.");
-			assertThat(reply.promptVersion()).isEqualTo("customer-agent.v1");
+			assertThat(reply.promptVersion()).isEqualTo("customer-agent.v2");
 			assertThat(reply.model()).isEqualTo("test-model");
 			assertThat(reply.promptTokens()).isEqualTo(11);
 			assertThat(reply.completionTokens()).isEqualTo(7);

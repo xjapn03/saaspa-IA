@@ -65,7 +65,7 @@ saaspa:
     # Ventana de memoria: mensajes que se envian al modelo (D-MEM).
     memory-window: ${IA_AGENT_MEMORY_WINDOW:10}
     # Prompt de sistema versionado del agente CLIENTAS (es-CO).
-    customer-prompt: classpath:prompts/customer-agent.v1.md
+    customer-prompt: classpath:prompts/customer-agent.v2.md
   llm:
     # Timeouts del cliente HTTP hacia el modelo (ADR 0009). Aparte del cliente del backend.
     connect-timeout: ${LLM_CONNECT_TIMEOUT:3s}
