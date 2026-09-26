@@ -707,6 +707,9 @@ Notas del lado de este repo:
   idénticos, y que `TENANT_TIMEZONE` y `saaspa.tenant.timezone` (hoy `IA_TENANT_TIMEZONE`) también.
   `./mvnw -B verify` cubre por pruebas el 403 del tenant y el 401 de las claves, pero **no** puede detectar
   un desacople de zona horaria entre dos despliegues.
+- Ese límite (**advertencia manual, sin comprobación en runtime ni en CI**) está documentado en detalle, con
+  propuestas aún no implementadas, en el hallazgo **J-06** de
+  `docs/reviews/2026-09-26-joint-integration-review.md`.
 
 ---
 
@@ -719,6 +722,8 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] README reescrito para la arquitectura NestJS + Java (2026-09-23)
 - [x] Proyecto generado con Spring Initializr: Boot 4.1.1, Java 21, BOM de Spring AI 2.0.1 (pom por corregir)
 - [x] Auditoría inicial del `pom.xml` y del repo (hallazgos en la sección 7)
+- [x] Informe de la revisión conjunta de integración (`saaspa-backend` ↔ `saaspa-IA`) versionado en
+      `docs/reviews/2026-09-26-joint-integration-review.md` (2026-09-26; sus hallazgos J-01 a J-13 quedan por triar)
 - [x] Acoplamiento con `saaspa-backend` documentado desde este lado y en espejo de su sección 6
       (`IA_TENANT_DEFAULT` ↔ `TENANT_ID` con 403, `saaspa.tenant.timezone` ↔ `TENANT_TIMEZONE` con fallo
       silencioso y las claves del turn token ↔ `TURN_TOKEN_KID` con 401) — ver **11.6**, 2026-09-26
@@ -905,6 +910,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — chore/prompt-v2-and-whatsapp-finding — versionado del prompt: el cambio de brevedad pasa a `prompts/customer-agent.v2.md` (v1 vuelve a su contenido original) y suben `PROMPT_VERSION`, `AgentProperties` y `application.yml` a v2; nuevo hallazgo diferido **A-24** (Fase 4): el agente formatea en Markdown estándar y WhatsApp no lo interpreta, hace falta salida consciente del canal; `eval/README.md` anota el prompt objetivo — verify verde (116 tests).
 - 2026-09-26 — docs/f1-closeout-and-contract-reconciliation — T1.10 (cierre de la Fase 1): informe `docs/contracts/f1-e2e-validation.md` con la evidencia real del criterio E2E recuperada del volumen local (`ia.turn_log`: turno `WEB_WIDGET`/`CLIENTAS`, `customer-agent.v1`, `deepseek-flash`, 3750/317 tokens, 3611 ms; `ia.tool_call_log`: `listarServicios` OK en 65 ms) y reconciliación contra `saaspa-backend@develop@9fc8b12`; contratos a chat-api v0.5.0, internal-api v0.3.0 (403 de tenant, `{idOrSlug}`, `featured` como texto, disponibilidad con offset) y web-chat-api v0.2.0 (413/429/403 reales, cookie de sesión, handoff omitido); AGENTS.md §7/§11/§12/§13 al día (Fase 1 cerrada, **A-10** y **C-02** resueltos, **A-08** corroborado, `REDIS_URL` retirado, 116 tests) y README — verify verde (116 tests).
 - 2026-09-26 — docs/backend-tenant-coupling-note — §11.6: el acoplamiento con `saaspa-backend` pasa a ser una tabla en espejo de su sección 6 (tenant con fallo cerrado 403, zona horaria con fallo silencioso, claves del turn token con 401), se añade el acople de claves/`kid` que faltaba, dónde se hace cumplir en código y la verificación previa al despliegue; cierra el pedido de `saaspa-backend/AGENTS.md` sección 9 — verify verde (116 tests).
+- 2026-09-26 — docs/commit-joint-integration-review — control de versiones del informe de la revisión conjunta (`docs/reviews/2026-09-26-joint-integration-review.md`, 536 líneas, commiteado **sin editar**) y referencia desde §11.6 al hallazgo **J-06** para el límite del acople (advertencia manual, sin comprobación en runtime ni en CI); checklist y registro al día — verify verde (116 tests).
 
 ---
 
