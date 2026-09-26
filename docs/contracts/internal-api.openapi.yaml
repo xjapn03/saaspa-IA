@@ -1,19 +1,25 @@
 openapi: 3.1.0
 info:
   title: NestJS Internal API (IA -> NestJS)
-  version: 0.2.0
+  version: 0.3.0
   description: >-
-    Contrato BORRADOR v0.2.0, revisado contra saaspa-backend@develop (ce41e487) en la tarea T1.0
-    (informe: docs/contracts/t1.0-backend-validation.md). Estado en el backend: NINGUN endpoint
-    /api/internal/v1/* existe todavia (ni modulo, ni controlador, ni guard); es el pedido 2 de
-    AGENTS.md seccion 11.
+    Contrato v0.3.0 (Fase 1 IMPLEMENTADA). Reconciliado contra saaspa-backend@develop (9fc8b12) el
+    2026-09-26 (informe: docs/contracts/f1-e2e-validation.md; la validacion del borrador v0.2.0 esta
+    en docs/contracts/t1.0-backend-validation.md). Los endpoints de Fase 1 ya existen en el backend
+    (src/modules/internal/); los de Fase 2/3/4 siguen siendo pedidos.
+    Endpoints implementados: GET /api/internal/v1/services (paginado, espejo del catalogo publico),
+    GET /api/internal/v1/services/{idOrSlug} (UUID o slug) y GET /api/internal/v1/availability?serviceId&date
+    (un dia; devuelve offset explicito y timezone). Los tres van con @SkipThrottle() y
+    @UseGuards(InternalAuthGuard).
     Autenticacion: cabecera X-Internal-Api-Key con el valor de INTERNAL_API_KEY (direccion
     IA -> NestJS; secreto distinto de IA_BOT_API_KEY, que es NestJS -> IA) mas el turn token
     (ADR 0006) en Authorization: Bearer. NestJS autoriza con la identidad DEL TOKEN, nunca con
     parametros que envie este servicio ni con argumentos generados por el modelo.
-    Requisitos del lado NestJS: guard que valide el turn token; @SkipThrottle() o limite propio
-    (el ThrottlerGuard global es 100 req/60 s y hoy solo se salta en el webhook de WhatsApp);
-    auditoria con actor de servicio; sin PII en logs.
+    Respuestas de error reales del guard: 401 si falta o no coincide la clave de servicio o el turn
+    token; 403 si el tenantId del token no es el TENANT_ID del backend.
+    Pendiente del lado NestJS: auditoria de las llamadas internas (existe AuditService, pero
+    src/modules/internal/ no lo usa: el turno solo queda en request.turn), segunda ranura de kid para
+    rotar la clave del turn token y los endpoints de Fase 2/3/4.
 servers:
   - url: http://backend:3001
 security:
@@ -30,23 +36,32 @@ paths:
       parameters:
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
-        - { name: featured, in: query, schema: { type: boolean } }
+        - name: featured
+          in: query
+          schema: { type: string, enum: ['true', 'false'] }
+          description: >-
+            Validado como texto (no se coerciona): cualquier otro valor responde 400; es el
+            comportamiento real de ListInternalServicesQueryDto.
       responses:
         '200':
           description: Lista paginada de servicios activos
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PaginatedServices' }
+        '400': { description: page/limit/featured invalidos }
         '401': { $ref: '#/components/responses/Unauthorized' }
-  /api/internal/v1/services/{id}:
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/internal/v1/services/{idOrSlug}:
     get:
       operationId: getService
-      summary: Detalle de un servicio (Fase 1)
+      summary: Detalle de un servicio (Fase 1, implementado)
       description: >-
-        En la API real el detalle publico es por slug (GET /api/services/public/{slug}); aqui se
-        admite id o slug y no se filtra por isActive, igual que el endpoint real.
+        Reconciliado con el backend: el parametro de ruta acepta **UUID o slug** (el controlador
+        decide con isUuid). En la API real el detalle publico es por slug
+        (GET /api/services/public/{slug}); aqui no se filtra por isActive, igual que el endpoint real.
+        Responde 404 si el servicio no existe.
       parameters:
-        - name: id
+        - name: idOrSlug
           in: path
           required: true
           schema: { type: string }
@@ -58,16 +73,18 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Service' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/internal/v1/availability:
     get:
       operationId: getAvailability
-      summary: Disponibilidad de agenda para un dia (Fase 1)
+      summary: Disponibilidad de agenda para un dia (Fase 1, implementado)
       description: >-
-        Equivale a GET /api/bookings/slots?serviceId&date: un solo dia, agenda unica global (no hay
-        staffId). La respuesta DEBE traer instantes con offset explicito y el campo timezone, porque
-        el backend calcula las franjas con Date.setHours en la zona horaria del contenedor (riesgo
-        pendiente, ver docs/contracts/t1.0-backend-validation.md seccion 6).
+        Reconciliado con el backend: equivale a GET /api/bookings/slots?serviceId&date (un solo dia,
+        agenda unica global, no hay staffId) pero devuelve instantes con offset explicito y el campo
+        timezone. `serviceId` acepta UUID o slug; `date` debe ser una fecha de calendario real
+        (YYYY-MM-DD) o responde 400. El offset se calcula con Intl.DateTimeFormat y longOffset, asi
+        que NO depende del tzdata del contenedor (resuelve la duda C-02 del informe T1.0).
       parameters:
         - name: serviceId
           in: query
@@ -85,7 +102,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Availability' }
+        '400': { description: date no es una fecha de calendario YYYY-MM-DD valida }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /api/internal/v1/bookings:
     post:
@@ -190,11 +209,20 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >-
-        Turn token ES256 (P-256, PEM, cabecera kid) emitido por NestJS (ADR 0006, pedido 1). NestJS
-        autoriza con la identidad del token, nunca con parametros de la peticion.
+        Turn token ES256 (P-256, cabecera kid) emitido por NestJS (ADR 0006). IMPLEMENTADO en
+        saaspa-backend (src/modules/internal/turn-token.service.ts; reconciliado el 2026-09-26):
+        jti = turnId, iss por defecto saaspa-backend, aud por defecto saaspa-ia y TTL por defecto
+        300 s (TURN_TOKEN_TTL_SECONDS). NestJS autoriza con la identidad del token, nunca con
+        parametros de la peticion. Este servicio reenvia el token tal cual en cada llamada interna.
   responses:
     Unauthorized:
       description: Clave de servicio o turn token ausente, invalido o expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: >-
+        El tenantId del turn token no es el TENANT_ID del backend (ForbiddenException 'Tenant no permitido')
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Problem' }

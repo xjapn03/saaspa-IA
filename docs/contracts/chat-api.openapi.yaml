@@ -1,14 +1,18 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.4.0
+  version: 0.5.0
   description: >-
-    Contrato BORRADOR v0.4.0. La v0.2.0 se reviso contra saaspa-backend@develop (ce41e487) en la tarea T1.0
-    (informe: docs/contracts/t1.0-backend-validation.md). NestJS sigue siendo el unico punto de
-    entrada de canales: resuelve tenant, identidad y rol, y llama a este servicio.
-    Estado en el backend: el emisor del turn token NO existe todavia (hoy solo hay JWT de sesion
-    HS256 para usuarios) y tampoco existe un cliente HTTP hacia este servicio; es un pedido
-    (AGENTS.md seccion 11, pedidos 1 y 3).
+    Contrato IMPLEMENTADO v0.5.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    (informe: docs/contracts/f1-e2e-validation.md; la validacion previa del borrador esta en
+    docs/contracts/t1.0-backend-validation.md). NestJS es el unico punto de entrada de canales:
+    resuelve tenant, identidad y rol, y llama a este servicio.
+    Estado en el backend: IMPLEMENTADO. El emisor del turn token es src/modules/internal/turn-token.service.ts
+    (ES256/P-256, kid en la cabecera, TTL por defecto 300 s, jti = turnId) y el cliente HTTP es
+    src/modules/chat/ia-bot.client.ts: POST {IA_BOT_URL}/api/v1/chat con X-Internal-Api-Key = IA_BOT_API_KEY
+    y Authorization: Bearer <turn token>, timeout IA_BOT_TIMEOUT_MS (20000 ms por defecto).
+    Mapeo de errores del backend: 400 -> 400, 501 -> 501, timeout -> 504 y cualquier otra respuesta
+    de este servicio (incluidos nuestros 401/403/502) -> 502.
     Autenticacion: cabecera de servicio X-Internal-Api-Key con el valor de IA_BOT_API_KEY
     (NestJS -> IA; clave distinta de INTERNAL_API_KEY, que es IA -> NestJS) mas el turn token
     firmado en Authorization: Bearer.
@@ -20,6 +24,10 @@ info:
     (regla R1); el agente ADMIN todavia no existe y responde 501.
     v0.4.0: el handoff lo decide el codigo (regla R10): los temas de salud, los reclamos y las
     peticiones explicitas de hablar con una persona devuelven handoff.requested=true con su motivo.
+    v0.5.0: reconciliacion con el backend real. `channel` y `agent` del cuerpo son los del turn token
+    (WEB_WIDGET/WEB_LOGGED en el chat web anonimo y logueado, CLIENTAS como agente en ambos). El
+    backend delega en este servicio el estado del handoff por turno y guarda el estado de la
+    conversacion por su lado (decision A-10a).
 servers:
   - url: http://localhost:8000
 paths:
@@ -85,9 +93,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >-
-        Turn token ES256 (P-256, PEM, cabecera kid) emitido por NestJS (ADR 0006, pedido 1),
-        pendiente de implementar en saaspa-backend. Este servicio solo verifica con la clave
-        publica y acepta dos claves por kid para rotar sin cortar el servicio.
+        Turn token ES256 (P-256, cabecera kid) emitido por NestJS (ADR 0006). Implementado en
+        saaspa-backend (src/modules/internal/turn-token.service.ts, reconciliado el 2026-09-26):
+        iss por defecto saaspa-backend, aud por defecto saaspa-ia, TTL por defecto 300 s y
+        jti = turnId. Este servicio solo verifica con la clave publica y acepta dos claves por kid
+        para rotar sin cortar el servicio; el backend todavia tiene una unica ranura de kid.
   responses:
     Problem:
       description: Problem Details (RFC 9457)
