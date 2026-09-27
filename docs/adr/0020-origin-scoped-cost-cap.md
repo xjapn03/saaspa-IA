@@ -66,7 +66,8 @@ coherente con R1 (la identidad no se toma del cuerpo ni de cabeceras que el serv
    contador en memoria o en Redis se descarta: un reinicio lo borra y varias instancias no lo comparten
    (Redis, además, es obra de infraestructura que hoy no existe).
 
-5. **Variante tolerante (decidida):** el claim `clientIp` es **opcional**. Mientras el backend no lo emita,
+5. **Variante tolerante (decidida):** el claim `clientIp` es **opcional**. Mientras el backend no lo emita
+   (desde su PR #84 ya lo emite, así que esto describe la **red de seguridad**, no la situación actual),
    el turno se registra con `origin_hash` nulo, **no entra en ninguna cubeta de origen** y el guard avisa
    **una vez por instancia** (WARN). La ausencia es además **visible y contable** en la tabla
    (`origin_hash IS NULL`), así que no es un silencio: se decide no bloquear la fusión de esta mitad en otro
@@ -88,8 +89,12 @@ coherente con R1 (la identidad no se toma del cuerpo ni de cabeceras que el serv
   Fase 5** con `ia.turn_log` y el `measured` del 429; un atacante con un pool de IPs sigue pudiendo repartir
   su consumo (a un coste mucho mayor por su parte, y el tope de tenant lo sigue acotando); el claim es un
   dato personal más en el token (no en los logs ni en claro en la tabla).
-- **Pendiente de otro repo:** el claim `clientIp` (pedido en AGENTS.md §11.5 y en la sección 9 del espejo),
-  y su fila de acoplamiento en §11.6. Hasta entonces el tope del canal anónimo **no** está activo.
+- **Hecho en otro repo (2026-09-26):** el claim `clientIp` ya lo emite `saaspa-backend` (su PR #84, commit
+  `a08985e`), así que el tope del canal anónimo está **activo y verificado** con un turno real por HTTP: 200 /
+  200 / **429 con `scope = origin`** y la fila de `ia.turn_log` con `origin_hash` ya no nulo (la IP no está en
+  la tabla). Evidencia: `docs/contracts/h04-origin-claim-validation.md`. La variante tolerante del punto 5 se
+  mantiene como red de seguridad: si un despliegue dejara de emitir el claim, el tope por origen del canal
+  anónimo se apagaría solo, pero el `WARN` del guard y `origin_hash IS NULL` lo delatarían.
 
 ## Referencias
 

@@ -117,8 +117,9 @@ de la escalera de plazos y añade la correlación del 504 y el registro del turn
 implementa el punto 3 de la ADR 0013, cierra el resto de A-08 que la 0014 dejó abierto y fija la base del
 cómputo del guard de coste: `status` con `HANDOFF`/`ERROR`, `handoff_reason` y `error_code`) y
 `docs/adr/0020-origin-scoped-cost-cap.md` (2026-09-26, la mitad de H-04 que cae de este lado: cuarto tope de
-coste **por origen del turno** y el claim `clientIp`, con la variante tolerante mientras el backend no lo
-emita).
+coste **por origen del turno** y el claim `clientIp`, con la variante tolerante como red de seguridad —el
+backend ya lo emite desde su PR #84 y la activación está verificada en
+`docs/contracts/h04-origin-claim-validation.md`—).
 
 **Ola 1 de la Fase 2** (2026-09-26 — ver el triaje conjunto, §3). **Las cuatro están Aceptadas**; la 0013 con el
 destino ya decidido:
@@ -726,20 +727,21 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
   El repositorio no se toca desde 2026-09-18: es la coordinación que falta **antes de abrir la Fase 2**.
   (La antigua duda de la TZ del contenedor del backend quedó resuelta: la disponibilidad se devuelve con
   offset explícito calculado con `Intl/ICU`.)
-- **saaspa-backend (pedido de H-04, 2026-09-26):** añadir el claim **`clientIp`** al turn token —la IP que
-  resuelve con `TRUSTED_PROXY_HOPS = 1`, nunca una cabecera que llegue al cliente— para que este servicio
-  pueda aplicar el **tope de coste por origen** (ADR 0020). Es **aditivo e inocuo** para el verificador
-  actual (ignora los claims desconocidos), así que puede desplegarse antes que esta mitad y sin cortar nada;
-  hasta que llegue, el tope del canal anónimo **no** está activo y esos turnos quedan con `origin_hash` nulo
-  (visibles en la tabla). Su mitad del hallazgo —que el 429 llegue como 429 y no como 502— ya está hecha
-  (su PR #83).
+- **saaspa-backend (H-04, hecho el 2026-09-26):** el claim **`clientIp`** ya se emite (su PR #84, commit
+  `a08985e`): es la IP que resuelve con `TRUSTED_PROXY_HOPS = 1` —**la misma** con la que agrupa su
+  `Throttler`— y va como claim opcional del turn token. Con eso el **tope de coste por origen** (ADR 0020) está
+  activo también en el canal anónimo, verificado con un turno real por HTTP y el volcado de la fila:
+  `docs/contracts/h04-origin-claim-validation.md`. Queda como **pedido de baja prioridad** (no bloquea nada y
+  **no se le ha pedido todavía**) que su registro del tope de coste no se limite a `scope === 'tenant'` y avise
+  también de un `scope = origin`.
 - **saaspa-frontend:** el chat web habla con `POST /api/chat` de NestJS, **nunca** directamente con este servicio.
 - **Pedidos derivados del triaje conjunto (2026-09-26):** la lista consolidada por destino
   (`kamerinos-infra`, `saaspa-backend` y `saaspa-frontend`) está en el §5 de
   `docs/reviews/2026-09-26-joint-review-triage.md` (hallazgos J-01 a J-13).
-- **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.5.0), `internal-api.openapi.yaml` (IA → NestJS, v0.3.0),
-  `web-chat-api.openapi.yaml` (frontend → NestJS, v0.2.0), `f1-e2e-validation.md` (cierre de la Fase 1 y
-  reconciliación) y `t1.0-backend-validation.md` (informe histórico de T1.0, superado).
+- **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.6.1), `internal-api.openapi.yaml` (IA → NestJS, v0.3.0),
+  `web-chat-api.openapi.yaml` (frontend → NestJS, v0.3.0), `f1-e2e-validation.md` (cierre de la Fase 1 y
+  reconciliación), `h04-origin-claim-validation.md` (activación del tope por origen, 2026-09-26) y
+  `t1.0-backend-validation.md` (informe histórico de T1.0, superado).
 
 ### 11.6 Acoplamiento de configuracion con saaspa-backend (critico)
 
@@ -753,7 +755,7 @@ contenedores (`backend` e `ia-bot`).
 | `IA_TENANT_DEFAULT` (`saaspa.tenant.default`; default `kamerinos`) | `TENANT_ID` (default `kamerinos`) | Fallo **cerrado**: este servicio responde **403** a todos los turnos (A-03). `ChatController` compara el `tenantId` **firmado en el turn token** con `saaspa.tenant.default`. |
 | `saaspa.tenant.timezone` (`IA_TENANT_TIMEZONE`; default `America/Bogota`) | `TENANT_TIMEZONE` (default `America/Bogota`) | Fallo **silencioso**: las fechas relativas del prompt y la disponibilidad real se interpretan en zonas distintas. No hay 403 ni error visible (C-02). |
 | `TURN_TOKEN_KEY_CURRENT_PUBLIC_KEY` / `TURN_TOKEN_KEY_PREVIOUS_PUBLIC_KEY` (cada una con su `TURN_TOKEN_KEY_CURRENT_KID` / `_PREVIOUS_KID`) | `TURN_TOKEN_KID` / `TURN_TOKEN_PRIVATE_KEY` | **401** en todos los turnos: el `kid` del token no está entre las claves públicas configuradas (`TurnTokenDecoderFactory`). |
-| Claim `clientIp` del turn token (opcional; ADR 0020) | `issueTurnToken` debe incluirlo con la IP resuelta por `TRUSTED_PROXY_HOPS = 1` (nunca una cabecera reenviada) | Fallo **acotado y visible**: sin el claim el turno se registra con `origin_hash` nulo y **no se le aplica el tope de coste por origen**, así que el canal anónimo puede volver a agotar el presupuesto del tenant desde una sola IP (H-04); el guard avisa una vez en el log y `origin_hash IS NULL` lo hace contable |
+| Claim `clientIp` del turn token (opcional; ADR 0020) | `issueTurnToken` lo incluye con la IP resuelta por `TRUSTED_PROXY_HOPS = 1` (nunca una cabecera reenviada) — **hecho: su PR #84** | **Cubierto**: es la clave del tope de coste por origen. Si un despliegue dejara de emitirlo, el turno se registraría con `origin_hash` nulo y **sin** ese tope (volvería el riesgo de H-04 desde una sola IP): lo delatan el `WARN` del guard y `origin_hash IS NULL` en la tabla |
 
 Notas del lado de este repo:
 
@@ -865,9 +867,11 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
       (60 turnos/h, `scope = origin`), con la clave `user:{userId}` o `ip:{clientIp}` y el hash `origin_hash`
       en `ia.turn_log` (migración `V4`, ADR 0020); contratos al día (429 preservado por el backend, `origin`
       en los `scope`, timeout real de 25000 ms) — rama `fix/h04-origin-scoped-cost-caps`, 2026-09-26
-- [ ] **H-04, activación del canal anónimo:** el claim `clientIp` lo emite `saaspa-backend` (pedido en §11.5 y
-      fila de acople en §11.6). Hasta entonces el tope por origen solo cubre los turnos logueados y el
-      anónimo puede volver a agotar el presupuesto del tenant desde una sola IP
+- [x] **H-04, activación del canal anónimo:** el claim `clientIp` ya lo emite `saaspa-backend` (PR #84) y el
+      tope por origen está activo en el canal anónimo, verificado con un turno real por HTTP (200 / 200 / **429
+      con `scope = origin`**) y el volcado de `ia.turn_log` (`origin_hash` ya no nulo, el mismo hash por origen y
+      la IP ausente de la tabla) — `docs/contracts/h04-origin-claim-validation.md`, 2026-09-26. Se decide **no**
+      endurecer a fallo cerrado ni recalibrar el 60/h hasta ver tráfico real
 
 ### Fase 3 — Agente ADMIN + reportes
 - [ ] Agente ADMIN con permisos por rol
@@ -905,11 +909,12 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 **ADR 0020**, fuera de esa reserva, para no renumerar por segunda vez.
 - **Segunda revisión conjunta** (`docs/reviews/2026-09-26-joint-integration-review-2.md`, hallazgos H-01 a
   H-06): **sin triaje formal como documento**; cada hallazgo se resuelve en su rama y aquí queda su estado.
-  De este repo: **H-02** (mitad propia hecha, §7), **H-05** (ADR 0015) y **H-04** (ADR 0020: tope por origen;
-  falta que el backend emita el claim `clientIp`, §11.5). Ya fusionados en `saaspa-backend`: **H-04** (el 429
-  llega como 429, su PR #83) y **H-03** (entrega y reintento del aviso de handoff, su PR #82). Sigue abierto:
-  **H-01** (carrera pago ↔ expiración, con el estado nuevo `PAGO_TARDE` pendiente de consumidor en el
-  dashboard) y **H-06** (consumidor del estado `EXPIRADA`), ambos de frontend/backend.
+  De este repo: **H-02** (mitad propia hecha, §7), **H-05** (ADR 0015) y **H-04** (ADR 0020: el tope por
+  origen, **activo y verificado** desde el PR #84 del backend). Ya fusionados en `saaspa-backend`: **H-04** (el
+  429 llega como 429, su PR #83; el claim `clientIp`, su PR #84) y **H-03** (entrega y reintento del aviso de
+  handoff, su PR #82). Sigue abierto: **H-01** (carrera pago ↔ expiración, con el estado nuevo `PAGO_TARDE`
+  pendiente de consumidor en el dashboard) y **H-06** (consumidor del estado `EXPIRADA`), ambos de
+  frontend/backend.
 - **B-01 ya no tiene nada pendiente de este lado:** el backend implementó la expiración (PR #77, estado
   `EXPIRADA`), el contrato interno expone el estado y el caso `B01-franja-liberada-por-expiracion` está en el
   dataset `eval/` (real, no brecha).
@@ -1059,6 +1064,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — fix/h02-dockerfile-and-boot — **H-02, la mitad de este repo** (segunda revisión conjunta): `Dockerfile` multi-etapa (`docker.io/library/maven:3.9-eclipse-temurin-21` → `docker.io/library/eclipse-temurin:21-jre`, usuario no root, `MaxRAMPercentage=75` por el `mem_limit: 768m` del compose, `EXPOSE 8000`, `ENTRYPOINT java -jar`) con sus comentarios de por qué `mvn` de la imagen y no `./mvnw`, más `.dockerignore` (sin excluir los prompts de `src/main/resources`) y job `image` del CI (`docker build`, después de `verify`); **segundo agujero del mismo hallazgo, encontrado al verificar**: las credenciales del datasource solo vivían en el perfil `local`, así que el contenedor habría arrancado sin URL de datasource (`Failed to configure a DataSource`) aunque el `Dockerfile` existiera — `spring.datasource.url/username/password` pasan a `application.yml` con los nombres del despliegue (`DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD`, que Boot **no** traduce por sí solo) y `application-local.yml` queda solo con el nivel de log; nombres de imagen cualificados por el registro porque en el equipo `docker` es Podman y la resolución de nombres cortos exige TTY; informe de la segunda revisión conjunta versionado **sin editar**; §7 (nota nueva del contenedor), §8 (árbol), §11.5 (pedido a `kamerinos-infra`: escalera 10/20/25 s, `IA_BOT_TIMEOUT_MS`, variables en su `.env.example`), §12 (dos entradas del checklist) y README ("Contenedor") al día — **validado**: `./mvnw -B verify` verde (127 tests), `docker build` y `docker run` contra el Postgres del `docker-compose.yml` con `/actuator/health` en `UP` y el esquema `ia` migrado por Flyway.
 - 2026-09-26 — fix/h05-turn-log-outcomes — **H-05 + punto 3 de ADR 0013 + el resto de A-08** (segunda revisión conjunta): **ADR 0015** (Aceptada) + migración `V3` (aditiva, sin tocar V1/V2) con `handoff_reason` y `error_code` y un índice `(tenant_id, created_at)` para la consulta del guard; `TurnLogService.Status` pasa a `OK`/`HANDOFF`/`DEADLINE`/`ERROR` con un `ErrorCode` cerrado (`BACKEND_UNAVAILABLE`/`BACKEND_ERROR`/`MODEL_ERROR`) mapeado por origen y sin inspeccionar tipos de Spring AI; `ChatController` registra `HANDOFF` con su motivo en la rama de la política y deja fila `ERROR` (con su código) cuando el fallo ocurre **después** de llamar al modelo, así que `ia.turn_log` es de verdad la fuente de verdad que promete ADR 0010; `TurnCostGuard` cuenta por "¿llamó al modelo?" (`status <> 'HANDOFF'`, con el nombre del estado tomado del enum) y `TurnOutcomeClassificationTest` es el `switch` exhaustivo que fuerza la decisión si aparece un estado nuevo (sustituye a una columna `model_called`); el turno rechazado por el tope sigue sin registrarse y un turno derivado ya no infla los topes de turnos; **límite documentado en el ADR**: los tokens de un turno fallido son desconocidos y quedan en 0 (cota inferior), mientras el conteo de turnos es exacto; tests: `TurnOutcomeClassificationTest` (nuevo), 3 casos de guard contra PostgreSQL (handoff no cuenta, error sí, tenant sin inflar), los tres códigos de error en `ChatControllerTest` (+ `TestBackendExceptions` para poder construir el error "con respuesta" del backend), captor del turno derivado en `ChatControllerHandoffTest`, fila `HANDOFF` real en `ChatApiTurnIntegrationTest` y persistencia de las dos columnas en `UsageLoggingTest`; §4/§12/§13 al día y renumeración del triaje (la 0015 pasa a estar usada; J-06→0016, J-07→0017, J-02→0018, J-10→0019) — verify verde (135 tests).
 - 2026-09-26 — fix/h04-origin-scoped-cost-caps — **la otra mitad de H-04** (segunda revisión conjunta): cuarto tope de coste **por origen del turno** (**ADR 0020**): `TurnToken` gana `clientIp` y `origin()` (`user:{id}` si el turno está identificado, `ip:{addr}` si es anónimo), `OriginHasher` guarda el origen como **HMAC-SHA256 con sal** (`IA_COST_GUARD_ORIGIN_SALT`; nunca la IP en claro y nunca en logs), `TurnCostGuard` añade la cubeta de origen (60 turnos/h, `IA_COST_GUARD_ORIGIN_MAX_TURNS`) en la misma consulta agregada y **la evalúa la última** para que el `scope` del 429 sea el más preciso (`origin` para la rotación de conversaciones, `conversation` para una conversación que habla de más, `tenant` como señal de capacidad), `CostLimitExceededException.Scope` gana `ORIGIN` y `ia.turn_log` gana `origin_hash` (migración `V4` aditiva, sin tocar V1-V3, con índice `(tenant_id, origin_hash, created_at)`); **variante tolerante decidida**: sin el claim el turno se registra con `origin_hash` nulo, no entra en ninguna cubeta y el guard avisa **una vez** (WARN), así que esta mitad no queda bloqueada por otro repo; tests: `OriginHasherTest` y `TurnTokenTest` nuevos, `TurnCostGuardTest` con el **caso de H-04 contra PostgreSQL real** (rotar conversaciones ya no agota el tenant: lo corta el origen), el aislamiento entre orígenes y la tolerancia sin claim, `ChatControllerTest` (el hash llega al guard y a la fila, sin la IP) y `ChatApiTurnIntegrationTest` (fila real con el hash esperado); contratos al día por pedido de `saaspa-backend`: `chat-api` **v0.6.0** (el 429 ya llega tal cual al widget, `origin` en los `scope`, claim `clientIp?` documentado y el timeout real de 25000 ms) y `web-chat-api` **v0.3.0** (el 429 incluye el tope de coste del asistente y el 504 cita 25000 ms); §4/§11.5 (pedido del claim)/§11.6 (fila de acople)/§12/§14 al día, con el estado verificado de H-01 a H-06 — verify verde (146 tests).
+- 2026-09-26 — fix/h04-origin-claim-activation — **cierre de H-04**: `saaspa-backend` ya emite el claim **`clientIp`** (su PR #84, commit `a08985e`, verificado en su código: `resolveClientIp` = `req.ip` con `TRUSTED_PROXY_HOPS = 1`, la misma IP con la que agrupa su `Throttler`), así que el tope por origen de ADR 0020 está **activo y verificado** en el canal anónimo: arranque del servicio contra el Postgres del `docker-compose.yml` (Flyway migró el esquema `ia` de v2 a **v4**) y **tres turnos reales por HTTP** con un token ES256 con el claim → 200 / 200 / **429 con `"scope":"origin"`** (`measured` 2, `limit` 2), dos filas en `ia.turn_log` con `origin_hash` **ya no nulo** y el mismo hash para el mismo origen (la IP no está en la tabla) y el turno rechazado sin fila; el modelo fue un stub local (R14). Suite: `ChatApiTurnIntegrationTest` gana dos casos (sin el claim → `origin_hash` nulo y ningún tope por origen; con el claim → 429 con `scope: origin` sin llamar al modelo, con `origin-max-turns=2` en el test) y queda en 8 tests. Informe con la evidencia: `docs/contracts/h04-origin-claim-validation.md`. Cierres: §12 (la entrada de activación pasa a hecha), §11.5 (el pedido del claim pasa a hecho y se anota el pedido de baja prioridad de ampliar su `warn` a cualquier `scope`, **sin pedirlo todavía**), §11.6 (la fila de acople pasa a «cubierto», con la red de seguridad documentada), ADR 0020 (desaparece el bullet de pendiente), `chat-api` **v0.6.1** (`clientIp` ya emitido) y los comentarios del `WARN` de `TurnCostGuard`, `TurnToken`, el converter, `application.yml` y `.env.example`. Decidido **no** endurecer a fallo cerrado ni recalibrar el 60/h hasta ver tráfico real — verify verde (148 tests).
 
 ---
 

@@ -97,7 +97,9 @@ saaspa:
     # IP, que antes podia quemar los 240 del tenant en ~12 minutos y dejar fuera a todas las clientas. Con
     # 60, una IP consume como maximo un cuarto del presupuesto del tenant; el tope del tenant queda como
     # senal de capacidad. La clave de origen es el usuario si el turno esta identificado y la IP resuelta por
-    # el backend si es anonimo (su claim clientIp); ni una ni otra se pueden rotar.
+    # el backend si es anonimo: ese claim (`clientIp`) ya lo emite saaspa-backend (su PR #84), asi que el canal
+    # anonimo esta cubierto; evidencia en docs/contracts/h04-origin-claim-validation.md. Ni el usuario ni la IP
+    # se pueden rotar.
     origin-max-turns: ${IA_COST_GUARD_ORIGIN_MAX_TURNS:60}
     # Sal del hash con el que se guarda el origen en `ia.turn_log` (nunca la IP en claro). OBLIGATORIA en
     # produccion: sin ella el tope por origen funciona igual, pero el hash de una IP se puede revertir por

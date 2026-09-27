@@ -25,8 +25,9 @@ public class TurnTokenAuthenticationConverter implements Converter<Jwt, Abstract
 					parseEnum(TurnToken.Agent.class, "agent", require(jwt, "agent")),
 					optional(jwt, "userId"),
 					optionalEnum(TurnToken.Role.class, "role", optional(jwt, "role")),
-					// Claim opcional de H-04 (ADR 0020): el backend lo emitira; mientras no lo haga, el
-					// turno va sin origen y no se le aplica el tope por origen (ver TurnCostGuard).
+					// Claim opcional de H-04 (ADR 0020), ya emitido por saaspa-backend (su PR #84): da la
+					// clave del tope por origen. Si un despliegue no lo mandara, el turno va sin origen y no
+					// se le aplica ese tope (lo delata el WARN de TurnCostGuard y origin_hash IS NULL).
 					optional(jwt, "clientIp"),
 					jwt.getExpiresAt(),
 					jwt.getTokenValue());

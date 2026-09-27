@@ -86,8 +86,9 @@ public record TurnToken(
 	 * sesion anonima si se pueden descartar (y con ellos se reiniciaba su tope). Cada fuente lleva su
 	 * prefijo ({@code user:} / {@code ip:}) para que un id de usuario no pueda colisionar con una IP.
 	 *
-	 * @return clave de origen, o {@code null} si el token no trae ni usuario ni IP (claim de H-04 aun sin
-	 * emitir por el backend: entonces el turno se registra sin origen y no se le aplica el tope por origen)
+	 * @return clave de origen, o {@code null} si el token no trae ni usuario ni IP (un turno sin el claim
+	 * {@code clientIp}, que el backend ya emite desde su PR #84: entonces el turno se registra sin origen y no
+	 * se le aplica el tope por origen, y el guard lo avisa una vez)
 	 */
 	public String origin() {
 		if (this.userId != null) {

@@ -123,15 +123,16 @@ public class TurnCostGuard {
 	}
 
 	/**
-	 * Un turno sin origen significa que el backend aun no emite el claim {@code clientIp} y que el turno es
-	 * anonimo, asi que el tope por origen (el que acota el abuso de una sola IP) no se esta aplicando.
-	 * Se avisa <strong>una vez por instancia</strong> para no inundar el log en cada turno; los turnos sin
-	 * origen quedan ademas visibles en {@code ia.turn_log} ({@code origin_hash IS NULL}).
+	 * Un turno sin origen significa que el turn token no trae {@code clientIp} ni usuario. El backend ya emite
+	 * ese claim (su PR #84, ADR 0020), asi que verlo aqui delata un despliegue que no lo esta mandando o un
+	 * token viejo: en ese caso el tope por origen (el que acota el abuso de una sola IP) no se aplica. Se avisa
+	 * <strong>una vez por instancia</strong> para no inundar el log en cada turno; los turnos sin origen quedan
+	 * ademas visibles en {@code ia.turn_log} ({@code origin_hash IS NULL}).
 	 */
 	private void warnAboutMissingOrigin() {
 		if (this.warnedAboutMissingOrigin.compareAndSet(false, true)) {
 			log.warn("Turno sin origen (el turn token no trae clientIp y no hay usuario): el tope por origen "
-					+ "de ADR 0020 no se aplica. Pedido a saaspa-backend en AGENTS.md 11.5");
+					+ "de ADR 0020 no se aplica. El backend ya emite ese claim: revisar su despliegue");
 		}
 	}
 
