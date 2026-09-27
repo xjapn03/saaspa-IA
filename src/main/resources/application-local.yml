@@ -1,9 +1,6 @@
-# Perfil `local`: apunta al docker-compose de desarrollo (pgvector pg15).
-spring:
-  datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/saaspa_ia}
-    username: ${DATABASE_USER:saaspa}
-    password: ${DATABASE_PASSWORD:saaspa}
+# Perfil `local`: solo lo que NO es comun al despliegue.
+# Las credenciales del datasource viven en `application.yml` (comunes): aqui no se duplican para no
+# tener dos fuentes de verdad. Este perfil apunta al docker-compose de desarrollo (pgvector pg15).
 
 logging:
   level:

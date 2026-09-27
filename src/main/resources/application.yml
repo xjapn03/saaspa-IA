@@ -5,6 +5,13 @@ spring:
     virtual:
       enabled: true
   datasource:
+    # Credenciales del esquema propio `ia`. Se declaran aqui (y no solo en el perfil `local`) porque el
+    # despliegue inyecta DATABASE_URL/DATABASE_USER/DATABASE_PASSWORD: sin esta traduccion el contenedor
+    # no arranca (`Failed to configure a DataSource`), porque Spring Boot no lee esos nombres por si solo.
+    # Si falta la variable en produccion el arranque falla cerrado: conexion rechazada, no un fallback mudo.
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/saaspa_ia}
+    username: ${DATABASE_USER:saaspa}
+    password: ${DATABASE_PASSWORD:saaspa}
     hikari:
       # El esquema propio del servicio es `ia`; el repo de memoria consulta sin calificar.
       connection-init-sql: SET search_path TO ia, public
