@@ -164,6 +164,18 @@ class ChatApiTurnIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("/actuator/info publica el tenant y la zona con los que se atienden los turnos (J-06 / ADR 0016)")
+	void infoPublishesTheTenantCoupling() {
+		ResponseEntity<String> response = this.restTemplate.getForEntity(url("/actuator/info"), String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		// El endpoint es el punto de comparacion del acople y deja de estar vacio (A-13).
+		assertThat(response.getBody()).contains("\"id\":\"kamerinos\"")
+				.contains("\"timezone\":\"America/Bogota\"")
+				.contains("customer-agent.v2");
+	}
+
+	@Test
 	@DisplayName("sin la clave de servicio responde 401 y no toca la base")
 	void rejectsWithoutServiceKey() {
 		HttpHeaders headers = new HttpHeaders();

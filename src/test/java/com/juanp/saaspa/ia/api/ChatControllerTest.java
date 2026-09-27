@@ -24,6 +24,7 @@ import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -32,6 +33,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -50,6 +53,7 @@ import com.juanp.saaspa.ia.security.SecurityConfig;
 import com.juanp.saaspa.ia.security.ServiceKeyVerifier;
 import com.juanp.saaspa.ia.security.TestTurnTokens;
 import com.juanp.saaspa.ia.security.TurnToken;
+import com.juanp.saaspa.ia.tenant.TenantCouplingCheck;
 import com.juanp.saaspa.ia.usage.CostLimitExceededException;
 import com.juanp.saaspa.ia.usage.CostLimitExceededException.Measure;
 import com.juanp.saaspa.ia.usage.CostLimitExceededException.Scope;
@@ -65,7 +69,8 @@ import com.juanp.saaspa.ia.usage.TurnLogService;
  */
 @WebMvcTest(ChatController.class)
 @Import({ SecurityConfig.class, HandoffConfig.class, LlmClientConfig.class, TenantPropertiesConfig.class,
-		OriginHasherConfig.class })
+		SliceBeansConfig.class })
+@ExtendWith(OutputCaptureExtension.class)
 class ChatControllerTest {
 
 	private static final String SERVICE_KEY = "test-service-key";
@@ -419,6 +424,25 @@ class ChatControllerTest {
 	/**
 	 * @return la unica fila que el turno registro en {@code ia.turn_log}
 	 */
+	@Test
+	@DisplayName("una zona horaria del cuerpo distinta a la del tenant avisa pero no corta el turno (J-06 / ADR 0016)")
+	void mismatchedTimeZoneWarnsWithoutBreakingTheTurn(CapturedOutput output) throws Exception {
+		given(this.customerAgent.reply(any(TurnToken.class), any(String.class)))
+				.willReturn(new CustomerAgent.CustomerReply("Hola", "customer-agent.v2", "deepseek-flash", 10, 5));
+
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("kamerinos", "CLIENTAS", "Hola", "America/Lima")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply.text").value("Hola"));
+
+		// El campo es informativo (C-02), asi que el desacople se advierte y el turno sigue respondiendo 200.
+		assertThat(output.toString()).contains("Acople desalineado de zona horaria")
+				.contains("America/Lima")
+				.contains("IA_TENANT_TIMEZONE");
+	}
+
 	private TurnLogService.TurnLog capturedTurnLog() {
 		ArgumentCaptor<TurnLogService.TurnLog> turnLog = ArgumentCaptor.forClass(TurnLogService.TurnLog.class);
 		then(this.turnLogService).should().record(turnLog.capture());
@@ -438,11 +462,15 @@ class ChatControllerTest {
 	}
 
 	private static String requestJson(String tenantId, String agent, String text) {
+		return requestJson(tenantId, agent, text, "America/Bogota");
+	}
+
+	private static String requestJson(String tenantId, String agent, String text, String timezone) {
 		return """
 				{"turnId": "%s", "tenantId": "%s", "conversationId": "conv-1", "channel": "WEB_WIDGET",
 				 "agent": "%s", "identity": {"kind": "ANONYMOUS"}, "message": {"text": "%s"},
-				 "locale": "es-CO", "timezone": "America/Bogota", "now": "2026-10-01T10:00:00-05:00"}
-				""".formatted(TURN_ID, tenantId, agent, text);
+				 "locale": "es-CO", "timezone": "%s", "now": "2026-10-01T10:00:00-05:00"}
+				""".formatted(TURN_ID, tenantId, agent, text, timezone);
 	}
 }
 
@@ -456,14 +484,20 @@ class TenantPropertiesConfig {
 }
 
 /**
- * Hasheador de origen real en el slice {@code @WebMvcTest} (el controlador lo necesita para calcular la
- * clave del tope por origen, ADR 0020): con una sal fija el test puede calcular el hash esperado.
+ * Beans que el slice {@code @WebMvcTest} no autoconfigura y que el controlador necesita: el hasheador del
+ * origen del turno (ADR 0020) y la comprobacion del acople de zona horaria (J-06 / ADR 0016). Se usan los
+ * reales, con una sal fija, para poder comprobar el hash y el aviso.
  */
 @TestConfiguration(proxyBeanMethods = false)
-class OriginHasherConfig {
+class SliceBeansConfig {
 
 	@Bean
 	OriginHasher originHasher() {
 		return new OriginHasher(ChatControllerTest.ORIGIN_SALT);
+	}
+
+	@Bean
+	TenantCouplingCheck tenantCouplingCheck(TenantProperties tenantProperties) {
+		return new TenantCouplingCheck(tenantProperties);
 	}
 }

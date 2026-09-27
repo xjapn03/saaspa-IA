@@ -25,6 +25,7 @@ import com.juanp.saaspa.ia.config.LlmProperties;
 import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
 import com.juanp.saaspa.ia.security.TurnToken;
+import com.juanp.saaspa.ia.tenant.TenantCouplingCheck;
 import com.juanp.saaspa.ia.usage.OriginHasher;
 import com.juanp.saaspa.ia.usage.TurnCostGuard;
 import com.juanp.saaspa.ia.usage.TurnLogService;
@@ -63,9 +64,11 @@ public class ChatController {
 
 	private final OriginHasher originHasher;
 
+	private final TenantCouplingCheck tenantCouplingCheck;
+
 	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService, HandoffPolicy handoffPolicy,
 			LlmProperties llmProperties, TenantProperties tenantProperties, TurnCostGuard turnCostGuard,
-			OriginHasher originHasher) {
+			OriginHasher originHasher, TenantCouplingCheck tenantCouplingCheck) {
 		this.customerAgent = customerAgent;
 		this.turnLogService = turnLogService;
 		this.handoffPolicy = handoffPolicy;
@@ -73,6 +76,7 @@ public class ChatController {
 		this.tenantProperties = tenantProperties;
 		this.turnCostGuard = turnCostGuard;
 		this.originHasher = originHasher;
+		this.tenantCouplingCheck = tenantCouplingCheck;
 	}
 
 	/**
@@ -91,6 +95,9 @@ public class ChatController {
 		if (!this.tenantProperties.defaultTenant().equals(turnToken.tenantId())) {
 			throw new TenantNotAllowedException("El tenant del turn token no esta permitido");
 		}
+
+		// J-06/ADR 0016: el acople de zona horaria se comprueba en el primer turno (avisa una vez, no corta).
+		this.tenantCouplingCheck.check(request.timezone());
 
 		if (turnToken.agent() != TurnToken.Agent.CLIENTAS) {
 			throw new UnsupportedAgentException(
