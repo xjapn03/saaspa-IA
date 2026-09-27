@@ -1,0 +1,17 @@
+# Contexto de build minimo: la imagen solo necesita `pom.xml` y `src`.
+# OJO: no usar un patron tipo `**/*.md`; los prompts del agente viven en
+# `src/main/resources/prompts/*.md` y forman parte del artefacto (patrones sin
+# barra solo afectan a la raiz del contexto, por eso `*.md` si es seguro).
+target
+.mvn
+.git
+.gitattributes
+.gitignore
+.github
+.env
+.env.*
+docker-compose.yml
+docs
+eval
+*.md
+.fuse_hidden*

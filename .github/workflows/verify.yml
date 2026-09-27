@@ -21,3 +21,19 @@ jobs:
           cache: maven
       - name: Verify
         run: ./mvnw -B verify
+
+  image:
+    name: docker build
+    runs-on: ubuntu-latest
+
+    needs: verify
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      # Solo se valida que la imagen se construye: es lo que kamerinos-infra
+      # hace en el despliegue (`docker compose build` de `ia-bot`). El arranque
+      # contra PostgreSQL real se valida a mano (necesita un Postgres de
+      # servicio y el mapeo de red del contenedor).
+      - name: Build the ia-bot image
+        run: docker build -t saaspa-ia:ci .
