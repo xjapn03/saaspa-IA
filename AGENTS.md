@@ -673,6 +673,9 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
   (La antigua duda de la TZ del contenedor del backend quedó resuelta: la disponibilidad se devuelve con
   offset explícito calculado con `Intl/ICU`.)
 - **saaspa-frontend:** el chat web habla con `POST /api/chat` de NestJS, **nunca** directamente con este servicio.
+- **Pedidos derivados del triaje conjunto (2026-09-26):** la lista consolidada por destino
+  (`kamerinos-infra`, `saaspa-backend` y `saaspa-frontend`) está en el §5 de
+  `docs/reviews/2026-09-26-joint-review-triage.md` (hallazgos J-01 a J-13).
 - **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.5.0), `internal-api.openapi.yaml` (IA → NestJS, v0.3.0),
   `web-chat-api.openapi.yaml` (frontend → NestJS, v0.2.0), `f1-e2e-validation.md` (cierre de la Fase 1 y
   reconciliación) y `t1.0-backend-validation.md` (informe histórico de T1.0, superado).
@@ -778,6 +781,13 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [ ] Idempotencia + confirmación explícita + feature flag
 - [ ] Enlaces pre-diligenciados `/agendar` y `/shop`
 - [ ] Tests de idempotencia y fechas relativas
+- [ ] **Bloqueantes antes de la primera herramienta de escritura** (triaje conjunto del 2026-09-26): J-03
+      abuso/coste (ADR 0010), B-01 expiro de `PENDIENTE_PAGO` y tope de reservas pendientes (ADR 0011),
+      J-08+J-09 identidad desde el turn token e idempotencia (ADR 0012) y J-05 handoff con destino y
+      reversible (ADR 0013, coordinado con el backend)
+- [ ] **Misma pasada que los bloqueantes:** J-04 escalera de plazos y turno fallido registrado (ADR 0014,
+      coordinado), J-06 acople comprobable y campos muertos (ADR 0015) y J-07 contrato de error (ADR 0016,
+      coordinado)
 
 ### Fase 3 — Agente ADMIN + reportes
 - [ ] Agente ADMIN con permisos por rol
@@ -793,6 +803,21 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [ ] LLM-as-a-Judge con umbral
 - [ ] Costos por conversación/tenant y límites
 - [ ] Piloto con Kamerinos y documentación final
+- [ ] Triaje conjunto: J-01 (`ia-bot` en `kamerinos-infra` + validación de config al arrancar en el backend) y
+      J-02 (widget del chat en `saaspa-frontend`) — bloquean el piloto y van **en paralelo a la Fase 2**
+- [ ] Triaje conjunto, ola 4: J-10 (id de conversación y retención, con A-17), J-11 (dos secretos, una
+      cabecera), J-12 (`turnId` de vuelta) y J-13 (casos de conformidad entre repos)
+
+### Triaje de la revisión conjunta (2026-09-26)
+
+- El mapeo completo de **J-01 a J-13** y del expiro de `PENDIENTE_PAGO` (etiquetado **B-01**, porque el informe
+  no le dio ID) está en `docs/reviews/2026-09-26-joint-review-triage.md`: ola de prioridad, ADR propuesta
+  (0010 a 0018), tarea de checklist y rama propuesta o marca de coordinación con el backend.
+- Olas (fijadas por la persona): **1** bloqueantes de la escritura (J-03, B-01, J-08+J-09, J-05); **2** piloto
+  en paralelo (J-01, J-02); **3** misma pasada (J-04, J-06, J-07); **4** pueden esperar (J-10 a J-13).
+- **Ninguna ADR está escrita y ninguna rama de implementación está abierta**: el triaje es solo el mapeo.
+- Los solapes con los hallazgos ya diferidos de §13 están cruzados en el §6 del triaje (J-03 ↔ A-06,
+  J-04 ↔ A-08/A-15, J-05 ↔ C-13, J-06 ↔ C-02/A-13, J-10 ↔ A-17/A-04/A-05).
 
 ### Decisiones abiertas
 
@@ -813,6 +838,9 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 > Revisión externa de solo lectura: `docs/reviews/2026-09-25-hermes-architecture-review.md`. Cada
 > hallazgo se evalúa contra el código real antes de aceptarlo (R17). Lo ya implementado figura como
 > resuelto; el resto queda aquí como backlog con severidad y la fase en la que se resolverá.
+> Los hallazgos **J-01 a J-13** de la revisión conjunta del 2026-09-26 tienen su propio mapeo
+> (`docs/reviews/2026-09-26-joint-review-triage.md`), y su §6 cruza los solapes con esta tabla para no
+> duplicar entradas.
 
 **Resueltos en esta tanda (no diferidos):**
 
@@ -911,6 +939,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — docs/f1-closeout-and-contract-reconciliation — T1.10 (cierre de la Fase 1): informe `docs/contracts/f1-e2e-validation.md` con la evidencia real del criterio E2E recuperada del volumen local (`ia.turn_log`: turno `WEB_WIDGET`/`CLIENTAS`, `customer-agent.v1`, `deepseek-flash`, 3750/317 tokens, 3611 ms; `ia.tool_call_log`: `listarServicios` OK en 65 ms) y reconciliación contra `saaspa-backend@develop@9fc8b12`; contratos a chat-api v0.5.0, internal-api v0.3.0 (403 de tenant, `{idOrSlug}`, `featured` como texto, disponibilidad con offset) y web-chat-api v0.2.0 (413/429/403 reales, cookie de sesión, handoff omitido); AGENTS.md §7/§11/§12/§13 al día (Fase 1 cerrada, **A-10** y **C-02** resueltos, **A-08** corroborado, `REDIS_URL` retirado, 116 tests) y README — verify verde (116 tests).
 - 2026-09-26 — docs/backend-tenant-coupling-note — §11.6: el acoplamiento con `saaspa-backend` pasa a ser una tabla en espejo de su sección 6 (tenant con fallo cerrado 403, zona horaria con fallo silencioso, claves del turn token con 401), se añade el acople de claves/`kid` que faltaba, dónde se hace cumplir en código y la verificación previa al despliegue; cierra el pedido de `saaspa-backend/AGENTS.md` sección 9 — verify verde (116 tests).
 - 2026-09-26 — docs/commit-joint-integration-review — control de versiones del informe de la revisión conjunta (`docs/reviews/2026-09-26-joint-integration-review.md`, 536 líneas, commiteado **sin editar**) y referencia desde §11.6 al hallazgo **J-06** para el límite del acople (advertencia manual, sin comprobación en runtime ni en CI); checklist y registro al día — verify verde (116 tests).
+- 2026-09-26 — docs/triage-joint-review — triaje de **J-01 a J-13** (y del expiro de `PENDIENTE_PAGO`, etiquetado **B-01**) en `docs/reviews/2026-09-26-joint-review-triage.md`: olas fijadas por la persona (1: J-03, B-01, J-08+J-09, J-05; 2: J-01, J-02; 3: J-04, J-06, J-07; 4: J-10 a J-13), ADR propuesta (0010 a 0018), tarea de checklist y rama propuesta o marca **«requiere coordinación con saaspa-backend, no fusionar de un solo lado»** (J-04, J-05, J-07); checklist de Fase 2 y 5 alineado, pedidos derivados en §11.5 y solapes con §13 cruzados — verify verde (116 tests); ninguna ADR escrita y ninguna rama de implementación abierta.
 
 ---
 
