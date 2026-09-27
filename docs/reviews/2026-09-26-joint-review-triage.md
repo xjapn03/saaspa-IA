@@ -171,6 +171,14 @@
 - *Checklist:* Fase 2, «misma pasada».
 - *Rama:* `feature/actuator-info-tenant-and-timezone` (feature, solo nuestro lado, aislable); la comprobación en
   el otro lado y la retirada de campos del contrato **se coordinan**.
+- **Resuelto (2026-09-26, ADR 0016, rama `feature/actuator-info-and-tenant-coupling`):** el acople **no
+  necesitaba coordinación**: el backend ya envía su zona en cada turno, así que este servicio la compara con la
+  suya y **avisa una vez** si no coinciden (sin cortar el turno), valida su propia zona **al arrancar** (una
+  errata ya no arranca el servicio) y publica tenant/zona/prompt/modelo en `/actuator/info` (A-13, parcial).
+  Los tres campos del contrato (`locale`/`timezone`/`now`) **se quedan como informativos** —`timezone` gana el
+  papel de señal del acople— así que **no hay cambio de contrato ni pedido**: que el backend consulte
+  `/actuator/info` al arrancar queda documentado como pedido de baja prioridad y **sin enviar** (ADR 0016,
+  decisión 6).
 
 **J-07 — El contrato de error no es el implementado (Media).**
 - *Aquí:* los tres contratos viven en `docs/contracts/`, así que la corrección documental es nuestra (o se

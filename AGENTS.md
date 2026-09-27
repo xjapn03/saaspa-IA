@@ -119,7 +119,9 @@ cómputo del guard de coste: `status` con `HANDOFF`/`ERROR`, `handoff_reason` y 
 `docs/adr/0020-origin-scoped-cost-cap.md` (2026-09-26, la mitad de H-04 que cae de este lado: cuarto tope de
 coste **por origen del turno** y el claim `clientIp`, con la variante tolerante como red de seguridad —el
 backend ya lo emite desde su PR #84 y la activación está verificada en
-`docs/contracts/h04-origin-claim-validation.md`—).
+`docs/contracts/h04-origin-claim-validation.md`—) y `docs/adr/0016-tenant-coupling-check.md` (2026-09-26,
+ola 3 del triaje, J-06: comprobación del acople de tenant y zona horaria —aviso en el primer turno,
+validación propia al arrancar y valores publicados en `/actuator/info`—).
 
 **Ola 1 de la Fase 2** (2026-09-26 — ver el triaje conjunto, §3). **Las cuatro están Aceptadas**; la 0013 con el
 destino ya decidido:
@@ -734,11 +736,17 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
   `docs/contracts/h04-origin-claim-validation.md`. Queda como **pedido de baja prioridad** (no bloquea nada y
   **no se le ha pedido todavía**) que su registro del tope de coste no se limite a `scope === 'tenant'` y avise
   también de un `scope = origin`.
+- **saaspa-backend (pedido de baja prioridad, J-06/ADR 0016, 2026-09-26 — *redactado y NO enviado*):** que
+  consulte `/actuator/info` de este servicio al arrancar y compare `saaspa.tenant.id`/`saaspa.tenant.timezone`
+  con su `TENANT_ID`/`TENANT_TIMEZONE`. **No es necesario** para detectar el desacople (este servicio ya avisa
+  en el primer turno comparando la zona del cuerpo, ADR 0016) y tiene un coste: haría de `ia-bot` dependencia
+  de **arranque** del backend y exigiría `healthcheck`/`depends_on` en `kamerinos-infra`. Se documenta para no
+  perder la opción, no se le ha pedido.
 - **saaspa-frontend:** el chat web habla con `POST /api/chat` de NestJS, **nunca** directamente con este servicio.
 - **Pedidos derivados del triaje conjunto (2026-09-26):** la lista consolidada por destino
   (`kamerinos-infra`, `saaspa-backend` y `saaspa-frontend`) está en el §5 de
   `docs/reviews/2026-09-26-joint-review-triage.md` (hallazgos J-01 a J-13).
-- **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.6.1), `internal-api.openapi.yaml` (IA → NestJS, v0.3.0),
+- **Contratos:** `chat-api.openapi.yaml` (NestJS → IA, v0.6.2), `internal-api.openapi.yaml` (IA → NestJS, v0.3.0),
   `web-chat-api.openapi.yaml` (frontend → NestJS, v0.3.0), `f1-e2e-validation.md` (cierre de la Fase 1 y
   reconciliación), `h04-origin-claim-validation.md` (activación del tope por origen, 2026-09-26) y
   `t1.0-backend-validation.md` (informe histórico de T1.0, superado).
@@ -758,6 +766,12 @@ contenedores (`backend` e `ia-bot`).
 | Claim `clientIp` del turn token (opcional; ADR 0020) | `issueTurnToken` lo incluye con la IP resuelta por `TRUSTED_PROXY_HOPS = 1` (nunca una cabecera reenviada) — **hecho: su PR #84** | **Cubierto**: es la clave del tope de coste por origen. Si un despliegue dejara de emitirlo, el turno se registraría con `origin_hash` nulo y **sin** ese tope (volvería el riesgo de H-04 desde una sola IP): lo delatan el `WARN` del guard y `origin_hash IS NULL` en la tabla |
 
 Notas del lado de este repo:
+
+- **Comprobación del acople (J-06/ADR 0016):** este servicio compara la `timezone` que NestJS envía en cada
+  turno con la suya y **avisa una vez** si no coinciden (nunca corta el turno), valida su propia zona **al
+  arrancar** (una errata impide el arranque, con la variable en el mensaje) y publica
+  `saaspa.tenant.id`/`saaspa.tenant.timezone` (con el prompt y el modelo) en `/actuator/info` como punto de
+  comparación. El endpoint vive en la red interna: `ia-bot` no publica puertos.
 
 - La identidad del turno (incluido `tenantId`) sale de los claims **firmados** del turn token, nunca del
   cuerpo de la petición ni de argumentos generados por el modelo (R1). El acople es con el valor con el que
@@ -859,6 +873,11 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [ ] **Misma pasada que los bloqueantes:** J-04 escalera de plazos y turno fallido registrado (ADR 0014,
       coordinado), J-06 acople comprobable y campos muertos (ADR 0016) y J-07 contrato de error (ADR 0017,
       coordinado)
+- [x] **J-06 (ola 3, ADR 0016 — mitad de este repo):** el acople de zona horaria con NestJS se comprueba en el
+      primer turno (avisa una vez, no corta: el campo es informativo), la propia zona se valida **al arrancar**
+      (una errata ya no arranca el servicio en vez de dar 500 en el primer turno) y `/actuator/info` publica
+      tenant, zona, prompt y modelo como punto de comparación; los campos `locale`/`timezone`/`now` siguen
+      informativos y el contrato no cambia — rama `feature/actuator-info-and-tenant-coupling`, 2026-09-26
 - [x] **H-05 / A-08 (segunda revisión conjunta):** todo desenlace que llama al modelo deja fila en
       `ia.turn_log` y el turno derivado deja `HANDOFF` con su motivo, así que `turn_log` es la fuente de
       verdad que promete ADR 0010; el guard cuenta por "¿llamó al modelo?" (ADR 0015, migración `V3`,
@@ -975,7 +994,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | A-09 | Media-baja | Fase 2 | Memoria read-modify-write sin serialización por conversación |
 | A-11 | Media-baja | Fase 4 (antes del pedido de identidad) | `waId` viaja en el cuerpo, no en el turn token |
 | A-12 | Baja | Fase 5 (el dataset de T1.8 ya cubre el caso) | Sin guarda de salida sobre precios |
-| A-13 | Baja | Fase 5 / despliegue | Health no refleja LLM/backend; la clave de salida puede ir vacía |
+| A-13 | Baja | **Parcialmente resuelto (2026-09-26, ADR 0016)** | Health no refleja LLM/backend; la clave de salida puede ir vacía. **Hecho:** `/actuator/info` publica el tenant, la zona horaria, el prompt y el modelo (y ya no está vacío). **Sigue pendiente (Fase 5):** el estado del LLM y del backend en `health` y la guarda de la clave de salida |
 | A-14 | Media-baja | Fase 5 (el dataset de T1.8 ya cubre los casos) | Listas de handoff hardcodeadas y sin medir precisión/recall; T1.9 añadió más falsos positivos plausibles (`A14-fp-estoy-tomando`, `A14-fp-infecciones`, `A14-fp-cirugia`) marcados como brecha |
 | A-15 | Baja | Fase 5 | Sin correlación (`traceparent`/`X-Turn-Id`) ni métricas Micrometer |
 | A-16 | Baja | Fase 4 (RAG) | Catálogo del backend como contenido fiable (inyección indirecta) |
@@ -1065,6 +1084,8 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — fix/h05-turn-log-outcomes — **H-05 + punto 3 de ADR 0013 + el resto de A-08** (segunda revisión conjunta): **ADR 0015** (Aceptada) + migración `V3` (aditiva, sin tocar V1/V2) con `handoff_reason` y `error_code` y un índice `(tenant_id, created_at)` para la consulta del guard; `TurnLogService.Status` pasa a `OK`/`HANDOFF`/`DEADLINE`/`ERROR` con un `ErrorCode` cerrado (`BACKEND_UNAVAILABLE`/`BACKEND_ERROR`/`MODEL_ERROR`) mapeado por origen y sin inspeccionar tipos de Spring AI; `ChatController` registra `HANDOFF` con su motivo en la rama de la política y deja fila `ERROR` (con su código) cuando el fallo ocurre **después** de llamar al modelo, así que `ia.turn_log` es de verdad la fuente de verdad que promete ADR 0010; `TurnCostGuard` cuenta por "¿llamó al modelo?" (`status <> 'HANDOFF'`, con el nombre del estado tomado del enum) y `TurnOutcomeClassificationTest` es el `switch` exhaustivo que fuerza la decisión si aparece un estado nuevo (sustituye a una columna `model_called`); el turno rechazado por el tope sigue sin registrarse y un turno derivado ya no infla los topes de turnos; **límite documentado en el ADR**: los tokens de un turno fallido son desconocidos y quedan en 0 (cota inferior), mientras el conteo de turnos es exacto; tests: `TurnOutcomeClassificationTest` (nuevo), 3 casos de guard contra PostgreSQL (handoff no cuenta, error sí, tenant sin inflar), los tres códigos de error en `ChatControllerTest` (+ `TestBackendExceptions` para poder construir el error "con respuesta" del backend), captor del turno derivado en `ChatControllerHandoffTest`, fila `HANDOFF` real en `ChatApiTurnIntegrationTest` y persistencia de las dos columnas en `UsageLoggingTest`; §4/§12/§13 al día y renumeración del triaje (la 0015 pasa a estar usada; J-06→0016, J-07→0017, J-02→0018, J-10→0019) — verify verde (135 tests).
 - 2026-09-26 — fix/h04-origin-scoped-cost-caps — **la otra mitad de H-04** (segunda revisión conjunta): cuarto tope de coste **por origen del turno** (**ADR 0020**): `TurnToken` gana `clientIp` y `origin()` (`user:{id}` si el turno está identificado, `ip:{addr}` si es anónimo), `OriginHasher` guarda el origen como **HMAC-SHA256 con sal** (`IA_COST_GUARD_ORIGIN_SALT`; nunca la IP en claro y nunca en logs), `TurnCostGuard` añade la cubeta de origen (60 turnos/h, `IA_COST_GUARD_ORIGIN_MAX_TURNS`) en la misma consulta agregada y **la evalúa la última** para que el `scope` del 429 sea el más preciso (`origin` para la rotación de conversaciones, `conversation` para una conversación que habla de más, `tenant` como señal de capacidad), `CostLimitExceededException.Scope` gana `ORIGIN` y `ia.turn_log` gana `origin_hash` (migración `V4` aditiva, sin tocar V1-V3, con índice `(tenant_id, origin_hash, created_at)`); **variante tolerante decidida**: sin el claim el turno se registra con `origin_hash` nulo, no entra en ninguna cubeta y el guard avisa **una vez** (WARN), así que esta mitad no queda bloqueada por otro repo; tests: `OriginHasherTest` y `TurnTokenTest` nuevos, `TurnCostGuardTest` con el **caso de H-04 contra PostgreSQL real** (rotar conversaciones ya no agota el tenant: lo corta el origen), el aislamiento entre orígenes y la tolerancia sin claim, `ChatControllerTest` (el hash llega al guard y a la fila, sin la IP) y `ChatApiTurnIntegrationTest` (fila real con el hash esperado); contratos al día por pedido de `saaspa-backend`: `chat-api` **v0.6.0** (el 429 ya llega tal cual al widget, `origin` en los `scope`, claim `clientIp?` documentado y el timeout real de 25000 ms) y `web-chat-api` **v0.3.0** (el 429 incluye el tope de coste del asistente y el 504 cita 25000 ms); §4/§11.5 (pedido del claim)/§11.6 (fila de acople)/§12/§14 al día, con el estado verificado de H-01 a H-06 — verify verde (146 tests).
 - 2026-09-26 — fix/h04-origin-claim-activation — **cierre de H-04**: `saaspa-backend` ya emite el claim **`clientIp`** (su PR #84, commit `a08985e`, verificado en su código: `resolveClientIp` = `req.ip` con `TRUSTED_PROXY_HOPS = 1`, la misma IP con la que agrupa su `Throttler`), así que el tope por origen de ADR 0020 está **activo y verificado** en el canal anónimo: arranque del servicio contra el Postgres del `docker-compose.yml` (Flyway migró el esquema `ia` de v2 a **v4**) y **tres turnos reales por HTTP** con un token ES256 con el claim → 200 / 200 / **429 con `"scope":"origin"`** (`measured` 2, `limit` 2), dos filas en `ia.turn_log` con `origin_hash` **ya no nulo** y el mismo hash para el mismo origen (la IP no está en la tabla) y el turno rechazado sin fila; el modelo fue un stub local (R14). Suite: `ChatApiTurnIntegrationTest` gana dos casos (sin el claim → `origin_hash` nulo y ningún tope por origen; con el claim → 429 con `scope: origin` sin llamar al modelo, con `origin-max-turns=2` en el test) y queda en 8 tests. Informe con la evidencia: `docs/contracts/h04-origin-claim-validation.md`. Cierres: §12 (la entrada de activación pasa a hecha), §11.5 (el pedido del claim pasa a hecho y se anota el pedido de baja prioridad de ampliar su `warn` a cualquier `scope`, **sin pedirlo todavía**), §11.6 (la fila de acople pasa a «cubierto», con la red de seguridad documentada), ADR 0020 (desaparece el bullet de pendiente), `chat-api` **v0.6.1** (`clientIp` ya emitido) y los comentarios del `WARN` de `TurnCostGuard`, `TurnToken`, el converter, `application.yml` y `.env.example`. Decidido **no** endurecer a fallo cerrado ni recalibrar el 60/h hasta ver tráfico real — verify verde (148 tests).
+- 2026-09-26 — feature/actuator-info-and-tenant-coupling — **J-06 (ola 3) + parte de A-13**: **ADR 0016** (Aceptada) y el acople de tenant/zona horaria con NestJS comprobable: `tenant/TenantCouplingCheck` compara la `timezone` que envía el backend en cada turno con `saaspa.tenant.timezone` y **avisa una vez por instancia** si no coinciden —sin cortar el turno, porque el campo es informativo (C-02)—, `TenantProperties` valida en su **constructor compacto** que el tenant no esté vacío y que la zona sea un `ZoneId` válido (una errata en `IA_TENANT_TIMEZONE` ahora impide el arranque en vez de dar 500 en el primer turno) y `TenantInfoContributor` publica `saaspa.tenant.id`/`saaspa.tenant.timezone` (con el prompt y el modelo) en `/actuator/info`, que deja de estar vacío (A-13 parcial); los tres campos del cuerpo (`locale`/`timezone`/`now`) siguen **informativos** y el contrato solo cambia de prosa (`chat-api` **v0.6.2** documenta `timezone` como señal del acople y aclara que los tres no deciden nada); **decidido no hacer** la consulta de `/actuator/info` al arrancar por el backend (haría de `ia-bot` dependencia de arranque suya y exigiría `healthcheck`/`depends_on` en infra) ni una prueba de conformidad en CI (no ve el despliegue y necesita un valor compartido que mantener): queda como **pedido de baja prioridad redactado y NO enviado** en §11.5; tests: `TenantCouplingCheckTest` (4: aviso único, silencio si coinciden, tolerancia sin valor, predicado), `TenantPropertiesTest` (3), un caso en `ChatControllerTest` (con la zona desalineada el turno sigue respondiendo 200 y el WARN aparece) y uno en `ChatApiTurnIntegrationTest` (`/actuator/info` publica el tenant y la zona) — verify verde (157 tests).
+
 
 ---
 
