@@ -104,11 +104,23 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 **Escritas en la Fase 0** (2026-09-23) — ver `docs/adr/0006-turn-token-and-identity-propagation.md`,
 `0007-memory-and-persistence.md` y `0008-write-tools-policy.md`:
 
-| ADR | Tema | Propuesta |
+| ADR | Tema | Decisión |
 |---|---|---|
 | 0006 | Propagación de identidad y autorización de herramientas | NestJS emite un **turn token** (JWT firmado, vida de minutos) con `tenantId`, `userId?`, `role?`, `conversationId`, `turnId`, `agent`. Java lo reenvía tal cual en cada llamada interna. NestJS **autoriza usando el token**, no campos que envíe Java ni argumentos del modelo. Se puede pasar al contexto de las herramientas con `ToolContext` de Spring AI (verificar en la doc). Alternativa más simple: headers + `INTERNAL_API_KEY`; se descarta por permitir suplantación si Java falla. |
 | 0007 | Memoria y persistencia del agente | Ver [decisión D-MEM](#decisiones-abiertas). Esquema propio `ia` en PostgreSQL. Log durable de mensajes, tool calls y uso. |
 | 0008 | Política de herramientas de escritura | Solo lectura primero; escritura tras feature flag; confirmación explícita de la clienta; **idempotencia** (`Idempotency-Key`); auditoría de cada tool call. |
+
+**Aceptada después:** `docs/adr/0009-llm-timeouts-and-retry.md` (2026-09-25).
+
+**Propuestas para la ola 1 de la Fase 2** (2026-09-26; estado **Propuesta**, pendientes de aceptación — ver el
+triaje conjunto, §3):
+
+| ADR | Tema | Propuesta |
+|---|---|---|
+| 0010 | Abuso y tope de coste | La mitad «sesión no falsificable» ya está resuelta en el backend (PR #76 fusionado: `trust proxy` de un salto y sesión anónima emitida y firmada por el servidor). Queda de este lado el **tope global por tenant** y el **coste por conversación**, con `ia.turn_log` como fuente de verdad y 429 al superar. |
+| 0011 | Expiración de `PENDIENTE_PAGO` | La implementación es **100 % de `saaspa-backend`**; este repo solo aporta el contrato (propuesta: estado `EXPIRADA` en `Booking.status`) y un caso del dataset `eval/` para la franja liberada por expiración. |
+| 0012 | Identidad e idempotencia de escritura | Precisión de ADR 0008 y ADR 0006: el sujeto sale **siempre** de `turn.userId` (nunca del cuerpo), sin identidad no hay escritura (403, sin auto-creación) y la `Idempotency-Key` (construida por código, no por el modelo) hace que un reintento devuelva el mismo recurso. |
+| 0013 | Handoff con destino y reversible | El estado sigue en NestJS (A-10a); se exige que sea **reversible** y **auditable** (registro del turno derivado). El **destino** (aviso por WhatsApp del salón vs bandeja del dashboard) queda como **decisión abierta de la persona**. |
 
 **Correcciones aplicadas en la Fase 0** (2026-09-23):
 - ADR 0003: eliminar la línea "Sustituye a ADR 0003 (single-tenant) — descartado antes de su publicación" (confunde).
@@ -815,7 +827,13 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
   (0010 a 0018), tarea de checklist y rama propuesta o marca de coordinación con el backend.
 - Olas (fijadas por la persona): **1** bloqueantes de la escritura (J-03, B-01, J-08+J-09, J-05); **2** piloto
   en paralelo (J-01, J-02); **3** misma pasada (J-04, J-06, J-07); **4** pueden esperar (J-10 a J-13).
-- **Ninguna ADR está escrita y ninguna rama de implementación está abierta**: el triaje es solo el mapeo.
+- Las cuatro ADR de la ola 1 están escritas con estado **Propuesta** en `docs/adr/`:
+  `0010-abuse-and-cost-controls.md`
+  (la mitad «sesión no falsificable» ya la resolvió el PR #76 del backend), `0011-pending-payment-expiry.md`
+  (implementación 100 % del backend; aquí contrato + dataset), `0012-write-identity-and-idempotency.md`
+  (precisa el ADR 0008) y `0013-handoff-destination-and-reversibility.md` (con el destino como decisión
+  abierta de la persona). Las ADR 0014 a 0018 siguen como reserva del triaje.
+- **Ninguna rama de implementación está abierta**: el triaje es solo el mapeo.
 - Los solapes con los hallazgos ya diferidos de §13 están cruzados en el §6 del triaje (J-03 ↔ A-06,
   J-04 ↔ A-08/A-15, J-05 ↔ C-13, J-06 ↔ C-02/A-13, J-10 ↔ A-17/A-04/A-05).
 
@@ -940,6 +958,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — docs/backend-tenant-coupling-note — §11.6: el acoplamiento con `saaspa-backend` pasa a ser una tabla en espejo de su sección 6 (tenant con fallo cerrado 403, zona horaria con fallo silencioso, claves del turn token con 401), se añade el acople de claves/`kid` que faltaba, dónde se hace cumplir en código y la verificación previa al despliegue; cierra el pedido de `saaspa-backend/AGENTS.md` sección 9 — verify verde (116 tests).
 - 2026-09-26 — docs/commit-joint-integration-review — control de versiones del informe de la revisión conjunta (`docs/reviews/2026-09-26-joint-integration-review.md`, 536 líneas, commiteado **sin editar**) y referencia desde §11.6 al hallazgo **J-06** para el límite del acople (advertencia manual, sin comprobación en runtime ni en CI); checklist y registro al día — verify verde (116 tests).
 - 2026-09-26 — docs/triage-joint-review — triaje de **J-01 a J-13** (y del expiro de `PENDIENTE_PAGO`, etiquetado **B-01**) en `docs/reviews/2026-09-26-joint-review-triage.md`: olas fijadas por la persona (1: J-03, B-01, J-08+J-09, J-05; 2: J-01, J-02; 3: J-04, J-06, J-07; 4: J-10 a J-13), ADR propuesta (0010 a 0018), tarea de checklist y rama propuesta o marca **«requiere coordinación con saaspa-backend, no fusionar de un solo lado»** (J-04, J-05, J-07); checklist de Fase 2 y 5 alineado, pedidos derivados en §11.5 y solapes con §13 cruzados — verify verde (116 tests); ninguna ADR escrita y ninguna rama de implementación abierta.
+- 2026-09-26 — docs/adr-0010-0013-write-blockers — las cuatro ADR de la ola 1 del triaje, con estado **Propuesta** (no aceptadas, sin código): **0010** abuso y coste (la mitad «sesión no falsificable» la resolvió el backend en el PR #76 fusionado —`trust proxy` de un salto y sesión anónima firmada—, y queda de este lado el tope por tenant y el coste por conversación con `ia.turn_log` como fuente de verdad), **0011** expiración de `PENDIENTE_PAGO` (implementación 100 % del backend; aquí el contrato y el caso del dataset: propuesta de estado `EXPIRADA` en `Booking.status`), **0012** identidad e idempotencia de escritura (precisa los ADR 0008 y 0006: el sujeto siempre desde `turn.userId`, 403 sin identidad y `Idempotency-Key` construida por código) y **0013** handoff con destino y reversible (reversible y auditable, con el **destino como decisión abierta de la persona**); §4 de AGENTS.md y el checklist del triaje actualizados — verify verde (116 tests).
 
 ---
 
