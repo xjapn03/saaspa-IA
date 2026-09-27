@@ -2,9 +2,10 @@
 
 - **Estado:** Aceptada (2026-09-26)
 - **Fecha:** 2026-09-26
-- **Implementación:** pendiente. La mitad del backend (sesión no falsificable y `trust proxy` de un salto)
-  ya está fusionada (PR #76) y este ADR la da por buena; la mitad de este repo —tope global por tenant y
-  coste por conversación— queda como tarea aparte, ya identificada en el checklist de la Fase 2.
+- **Implementación:** hecha en los dos lados. La mitad del backend (sesión no falsificable y `trust proxy` de un
+  salto) está fusionada (PR #76) y este ADR la da por buena; la mitad de este repo está implementada en
+  `usage/TurnCostGuard` (consulta agregada sobre `ia.turn_log` → **429** con `ProblemDetail`), con los valores
+  por defecto y su justificación en `application.yml` y `.env.example`.
 - **Origen:** hallazgo **J-03** de `docs/reviews/2026-09-26-joint-integration-review.md`; ola 1 del triaje
   (`docs/reviews/2026-09-26-joint-review-triage.md`).
 
@@ -38,15 +39,26 @@ commit `16653735`) hace exactamente la mitad «sesión no falsificable»:
 **Lo que queda de este lado** (el objeto de este ADR):
 
 - **Tope global por tenant** y **coste por conversación/turno** en este servicio (ya propuesto como **A-06**;
-  el triaje lo eleva a bloqueante de cualquier herramienta de escritura). Mecanismo propuesto: límite de
-  turnos por ventana y de tokens por conversación, contabilizados en el esquema `ia`, con respuesta **429**
-  (`ProblemDetail`) al superarlos.
+  el triaje lo eleva a bloqueante de cualquier herramienta de escritura). **Mecanismo implementado**
+  (`usage/TurnCostGuard`): ventana móvil (1 h) con cuatro topes —turnos y tokens por **tenant**, turnos y
+  tokens por **conversación**— medidos con una consulta agregada sobre `ia.turn_log`, y **429**
+  (`ProblemDetail` con `scope`, `measure`, `measured`, `limit` y `window`) al superarlos. Se evalúa **solo en el
+  camino que llama al modelo**: un turno resuelto por `HandoffPolicy` no gasta tokens y no se corta por
+  presupuesto (R10 no depende del coste). El turno rechazado **no** se registra, para que un abuso no escriba
+  filas que alimenten su propio tope.
+- **Valores por defecto (conservadores y justificados)**, todos configurables por entorno: `window` 1 h
+  (alineada con la ventana del backend), **240 turnos/hora** por tenant (~4/minuto sostenidos; el backend ya
+  corta a 20 req/min por IP y a 30 mensajes/hora por sesión anónima), **1.000.000 tokens/hora** por tenant
+  (el turno medido en el E2E de la Fase 1 gastó ~4.000), **30 turnos/hora** por conversación (el mismo número
+  que `ANONYMOUS_MESSAGE_CAP` del backend, para no cortar antes que el gateway) y **150.000 tokens/hora** por
+  conversación (30 × ~4.000 con holgura).
 - **Fuente de verdad del consumo:** `ia.turn_log` (tokens y latencia por turno) y `ia.tool_call_log` (las
-  herramientas). **Sin contador en memoria**: un reinicio no debe borrar el consumo.
+  herramientas). **Sin contador en memoria**: un reinicio no borra el consumo y varias instancias comparten el
+  mismo límite.
 - **Alcance por tenant:** la clave de memoria ya va namespaced (`{tenantId}:{channel}:{conversationId}`), así
   que el tope por tenant no exige cambiar el modelo de datos.
-- **Los valores concretos no se deciden aquí:** el ADR fija el mecanismo, la fuente de verdad y la forma del
-  error; los números se calibran en la Fase 5 con latencia y coste reales y quedan configurables por entorno.
+- **Calibración pendiente:** el ADR fija el mecanismo y unos números conservadores; se revisan en la Fase 5 con
+  latencia y coste reales (el `measured`/`limit` del 429 y `ia.turn_log` dan la señal).
 
 **Fuera de esta ADR y de este repo:** el tope **por cuenta** para crear citas y el tope de reservas pendientes
 (**B-01**, ADR 0011) son de `saaspa-backend`, en la misma pasada de escritura.
