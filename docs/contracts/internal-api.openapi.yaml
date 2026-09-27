@@ -128,7 +128,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { description: Slot ocupado (el backend responde ConflictException) }
+        '409':
+          description: >-
+            Slot ocupado, o tope de reservas pendientes por usuario alcanzado
+            (`BOOKING_MAX_PENDING_PER_USER`, 2 por defecto; PR #77)
   /api/internal/v1/bookings/{id}:
     patch:
       operationId: rescheduleBooking
@@ -307,7 +310,15 @@ components:
         id: { type: string, format: uuid }
         status:
           type: string
-          enum: [PENDIENTE_PAGO, CONFIRMADA, CANCELADA, COMPLETADA, NO_ASISTIO]
+          description: >-
+            IMPLEMENTADO en el backend (PR #77, fusionado el 2026-09-27 01:09 UTC; ADR 0011). Una cita en
+            PENDIENTE_PAGO deja de ocupar su franja cuando vence la ventana de pago
+            (`BOOKING_PAYMENT_TTL_MINUTES`, 30 min por defecto) y pasa a EXPIRADA: el barrido corre cada
+            5 min y una vez al arrancar, libera el lock de Redis y borra el evento de Calendar si existe.
+            Un pago tardio queda APROBADO y necesita decision manual, y `confirm`/`reschedule` rechazan una
+            cita EXPIRADA. La franja liberada vuelve a aparecer en `/availability` porque el filtro de
+            ocupacion es el mismo que usan la disponibilidad y las comprobaciones de solape.
+          enum: [PENDIENTE_PAGO, CONFIRMADA, CANCELADA, COMPLETADA, NO_ASISTIO, EXPIRADA]
         serviceId: { type: string }
         startTime: { type: string, format: date-time }
         endTime: { type: string, format: date-time }
