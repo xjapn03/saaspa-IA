@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.io.IOException;
 import java.security.KeyPair;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -47,6 +48,10 @@ import com.juanp.saaspa.ia.security.SecurityConfig;
 import com.juanp.saaspa.ia.security.ServiceKeyVerifier;
 import com.juanp.saaspa.ia.security.TestTurnTokens;
 import com.juanp.saaspa.ia.security.TurnToken;
+import com.juanp.saaspa.ia.usage.CostLimitExceededException;
+import com.juanp.saaspa.ia.usage.CostLimitExceededException.Measure;
+import com.juanp.saaspa.ia.usage.CostLimitExceededException.Scope;
+import com.juanp.saaspa.ia.usage.TurnCostGuard;
 import com.juanp.saaspa.ia.usage.TurnLogService;
 
 /**
@@ -83,6 +88,9 @@ class ChatControllerTest {
 
 	@MockitoBean
 	private TurnLogService turnLogService;
+
+	@MockitoBean
+	private TurnCostGuard turnCostGuard;
 
 	@Test
 	@DisplayName("responde el turno del agente con reply, handoff y uso de tokens")
@@ -121,6 +129,9 @@ class ChatControllerTest {
 		assertThat(turnLog.getValue().tokensOut()).isEqualTo(80);
 		assertThat(turnLog.getValue().latencyMs()).isGreaterThanOrEqualTo(0);
 		assertThat(turnLog.getValue().status()).isEqualTo(TurnLogService.Status.OK);
+
+		// ADR 0010: el tope de coste se consulta antes de llamar al modelo.
+		then(this.turnCostGuard).should().check("kamerinos", "conv-1");
 	}
 
 	@Test
@@ -234,6 +245,32 @@ class ChatControllerTest {
 				Arguments.of("Estoy embarazada, puedo hacerme el masaje?", "HEALTH_TOPIC", "profesional del centro"),
 				Arguments.of("Quiero poner un reclamo por el servicio de ayer", "COMPLAINT", "Lamento lo sucedido"),
 				Arguments.of("Quiero hablar con una asesora", "EXPLICIT_REQUEST", "persona del equipo"));
+	}
+
+	@Test
+	@DisplayName("un turno por encima del tope de coste responde 429 y no llama al modelo (ADR 0010)")
+	void rejectsTurnsOverTheCostLimit() throws Exception {
+		willThrow(new CostLimitExceededException(Scope.CONVERSATION, Measure.TURNS, 30, 30, Duration.ofHours(1)))
+				.given(this.turnCostGuard)
+				.check("kamerinos", "conv-1");
+
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("kamerinos", "CLIENTAS", "Que servicios tienen?")))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+				.andExpect(jsonPath("$.title").value("Limite de uso alcanzado"))
+				.andExpect(jsonPath("$.scope").value("conversation"))
+				.andExpect(jsonPath("$.measure").value("turns"))
+				.andExpect(jsonPath("$.measured").value(30))
+				.andExpect(jsonPath("$.limit").value(30))
+				.andExpect(jsonPath("$.window").value("PT1H"));
+
+		then(this.customerAgent).shouldHaveNoInteractions();
+		// El turno rechazado no se registra: si se registrara, cada rechazo alimentaria su propio tope y
+		// un abuso llenaria la tabla.
+		then(this.turnLogService).shouldHaveNoInteractions();
 	}
 
 	@Test

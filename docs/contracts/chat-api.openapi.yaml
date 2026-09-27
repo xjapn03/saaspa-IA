@@ -57,7 +57,17 @@ paths:
           $ref: '#/components/responses/Problem'
         '403':
           $ref: '#/components/responses/Problem'
-        '501':
+        '429':
+          description: >-
+            Tope de coste superado (ADR 0010): turnos o tokens por ventana, por tenant o por conversacion,
+            medidos sobre `ia.turn_log` (sin contador en memoria). El `ProblemDetail` incluye `scope`
+            (`tenant`|`conversation`), `measure` (`turns`|`tokens`), `measured`, `limit` y `window` (ISO-8601).
+            Nota: el backend mapea hoy cualquier respuesta distinta de 400/501 a **502** (J-07), asi que el
+            widget no vera el 429 hasta que se acuerde ese mapeo.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
           description: >-
             El agente pedido no esta implementado en esta fase (Fase 1: solo CLIENTAS; el agente
             ADMIN llega en la Fase 3)

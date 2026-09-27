@@ -66,6 +66,26 @@ saaspa:
     memory-window: ${IA_AGENT_MEMORY_WINDOW:10}
     # Prompt de sistema versionado del agente CLIENTAS (es-CO).
     customer-prompt: classpath:prompts/customer-agent.v2.md
+  # Tope de coste por tenant y por conversacion (ADR 0010). Fuente de verdad: `ia.turn_log` (tokens y
+  # latencia por turno), sin contador en memoria: un reinicio no borra el consumo acumulado.
+  cost-guard:
+    # Permite apagarlo sin desplegar codigo nuevo.
+    enabled: ${IA_COST_GUARD_ENABLED:true}
+    # Ventana movil de los topes; se alinea con la del backend (30 mensajes por hora y por sesion anonima).
+    window: ${IA_COST_GUARD_WINDOW:1h}
+    # Por tenant: 240 turnos/hora = 4 por minuto sostenidos. El backend ya limita a 20 req/min por IP y a
+    # 30 mensajes/hora por sesion anonima, asi que este tope solo salta con muchas clientas a la vez o con
+    # un bucle o abuso; es el primero de los cuatro topes que acota el coste de un tenant entero.
+    tenant-max-turns: ${IA_COST_GUARD_TENANT_MAX_TURNS:240}
+    # 1.000.000 tokens/hora por tenant: el turno medido en el E2E de la Fase 1 gasto ~4.000 tokens
+    # (3.750 de entrada + 317 de salida), asi que 240 turnos caben justo por debajo.
+    tenant-max-tokens: ${IA_COST_GUARD_TENANT_MAX_TOKENS:1000000}
+    # Por conversacion: 30 turnos/hora, el mismo numero que el tope de sesion anonima del backend
+    # (ANONYMOUS_MESSAGE_CAP), para no cortar antes que el gateway.
+    conversation-max-turns: ${IA_COST_GUARD_CONVERSATION_MAX_TURNS:30}
+    # 150.000 tokens/hora por conversacion: 30 turnos x ~4.000 tokens = 120.000, con holgura por si crecen
+    # el prompt o la memoria.
+    conversation-max-tokens: ${IA_COST_GUARD_CONVERSATION_MAX_TOKENS:150000}
   llm:
     # Timeouts del cliente HTTP hacia el modelo (ADR 0009). Aparte del cliente del backend.
     connect-timeout: ${LLM_CONNECT_TIMEOUT:3s}

@@ -23,6 +23,7 @@ import com.juanp.saaspa.ia.config.LlmProperties;
 import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
 import com.juanp.saaspa.ia.security.TurnToken;
+import com.juanp.saaspa.ia.usage.TurnCostGuard;
 import com.juanp.saaspa.ia.usage.TurnLogService;
 
 /**
@@ -55,13 +56,16 @@ public class ChatController {
 
 	private final TenantProperties tenantProperties;
 
+	private final TurnCostGuard turnCostGuard;
+
 	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService, HandoffPolicy handoffPolicy,
-			LlmProperties llmProperties, TenantProperties tenantProperties) {
+			LlmProperties llmProperties, TenantProperties tenantProperties, TurnCostGuard turnCostGuard) {
 		this.customerAgent = customerAgent;
 		this.turnLogService = turnLogService;
 		this.handoffPolicy = handoffPolicy;
 		this.llmProperties = llmProperties;
 		this.tenantProperties = tenantProperties;
+		this.turnCostGuard = turnCostGuard;
 	}
 
 	/**
@@ -104,6 +108,10 @@ public class ChatController {
 			completionTokens = 0;
 		}
 		else {
+			// ADR 0010: el tope de coste se evalua solo en el camino que llama al modelo. Un turno
+			// resuelto por HandoffPolicy no gasta tokens, asi que no se corta por presupuesto (R10 no
+			// depende del coste).
+			this.turnCostGuard.check(turnToken.tenantId(), turnToken.conversationId());
 			try {
 				CustomerAgent.CustomerReply reply = this.replyWithDeadline(turnToken, request.message().text());
 				replyText = reply.text();

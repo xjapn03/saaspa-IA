@@ -60,6 +60,9 @@
 ### Ola 1 — bloqueantes de la escritura de Fase 2
 
 **J-03 — El control de abuso se evade con una cabecera (Alta).**
+> **Estado (2026-09-27):** el backend ya cerró su mitad (PR #76: `trust proxy` de un salto y sesión anónima
+> firmada) y este repo implementó la suya (ADR 0010: `usage/TurnCostGuard`, topes por tenant y por conversación
+> medidos sobre `ia.turn_log` con **429**). Sigue pendiente del backend el tope **por cuenta** al crear citas.
 - *Aquí:* no hay nada implementado de abuso/coste (0 coincidencias de `Throttl/RateLimit` en `src/main`).
   La parte nuestra es la decisión (ADR 0010) y, después, el tope global por tenant y el coste por conversación
   (ya propuesto como **A-06** en §13; el triaje lo confirma y lo eleva a bloqueante).

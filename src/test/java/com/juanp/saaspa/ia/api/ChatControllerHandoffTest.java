@@ -2,6 +2,7 @@ package com.juanp.saaspa.ia.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.BDDMockito.then;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -40,6 +41,7 @@ import com.juanp.saaspa.ia.security.TurnTokenAuthentication;
 import com.juanp.saaspa.ia.tools.ToolsConfig;
 import com.juanp.saaspa.ia.usage.ToolCallLogger;
 import com.juanp.saaspa.ia.usage.TurnLogService;
+import com.juanp.saaspa.ia.usage.TurnCostGuard;
 
 import reactor.core.publisher.Flux;
 import tools.jackson.databind.ObjectMapper;
@@ -79,11 +81,12 @@ class ChatControllerHandoffTest {
 			CustomerAgent agent = context.getBean(CustomerAgent.class);
 			HandoffPolicy policy = new HandoffPolicy();
 			TurnLogService turnLogService = mock(TurnLogService.class);
+			TurnCostGuard turnCostGuard = mock(TurnCostGuard.class);
 			LlmProperties llmProperties = new LlmProperties(Duration.ofSeconds(3), Duration.ofSeconds(30),
 					Duration.ofSeconds(35));
 			TenantProperties tenantProperties = context.getBean(TenantProperties.class);
 			ChatController controller = new ChatController(agent, turnLogService, policy, llmProperties,
-					tenantProperties);
+					tenantProperties, turnCostGuard);
 
 			TurnToken token = new TurnToken(TURN_ID.toString(), "kamerinos", "conv-1", TurnToken.Channel.WEB_WIDGET,
 					TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300), "turn-token-123");
@@ -98,6 +101,9 @@ class ChatControllerHandoffTest {
 				assertThat(response.handoff().reason()).isEqualTo("HEALTH_TOPIC");
 				assertThat(response.usage().model()).isNull();
 				assertThat(this.adviceModel.calls()).isZero();
+				// ADR 0010: un turno con handoff no llama al modelo, asi que no consulta el tope de coste
+				// (y por tanto nunca se corta por presupuesto).
+				then(turnCostGuard).shouldHaveNoInteractions();
 			}
 			finally {
 				SecurityContextHolder.clearContext();
