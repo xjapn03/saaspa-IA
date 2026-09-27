@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.6.1
+  version: 0.6.2
   description: >-
-    Contrato IMPLEMENTADO v0.6.1. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    Contrato IMPLEMENTADO v0.6.2. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
     (informe: docs/contracts/f1-e2e-validation.md; la validacion previa del borrador esta en
     docs/contracts/t1.0-backend-validation.md). NestJS es el unico punto de entrada de canales:
     resuelve tenant, identidad y rol, y llama a este servicio.
@@ -32,6 +32,8 @@ info:
     v0.6.0: el backend preserva el 429 de este servicio hacia el widget (H-04, ya implementado alli) y el
     tope de coste gana el ambito `origin` con el claim opcional `clientIp` (ADR 0020 de este repo); se
     corrige el timeout real del backend (25000 ms).
+    v0.6.2: `timezone` documenta su papel como senal del acople de zona horaria (J-06, ADR 0016) y se aclara
+    que los tres campos de contexto (`locale`/`timezone`/`now`) son informativos y no deciden nada.
 servers:
   - url: http://localhost:8000
 paths:
@@ -153,18 +155,27 @@ components:
           required: [text]
           properties:
             text: { type: string, maxLength: 2000 }
-        locale: { type: string, example: es-CO }
+        locale:
+          type: string
+          example: es-CO
+          description: >-
+            Contexto informativo: idioma de la conversacion. saaspa-IA no lo usa hoy para decidir nada (sus
+            prompts son es-CO y la fecha la calcula el mismo); el backend envia una constante.
         timezone:
           type: string
           example: America/Bogota
           description: >-
-            Contexto informativo para el LLM. La autoridad de la zona horaria es saaspa-IA
-            (saaspa.tenant.timezone); no se usa para validar fechas ni disponibilidad.
+            Contexto informativo. La autoridad de la zona horaria es saaspa-IA (saaspa.tenant.timezone); no se
+            usa para el prompt, ni para validar fechas, ni para la disponibilidad. Desde la ADR 0016 (J-06)
+            saaspa-IA lo usa **ademas como senal del acople**: si no coincide con su propia configuracion, lo
+            avisa una vez en el log (el turno continua, el campo no es autoritativo) y publica la suya junto al
+            tenant en `/actuator/info` para poder comparar.
         now:
           type: string
           format: date-time
           description: >-
-            Contexto informativo para el LLM. No es la fuente de verdad del reloj de saaspa-IA.
+            Contexto informativo: el reloj del backend. No es la fuente de verdad del reloj de saaspa-IA (la
+            fecha del prompt sale de su propia configuracion, R13).
     ChatResponse:
       type: object
       required: [turnId, reply]
