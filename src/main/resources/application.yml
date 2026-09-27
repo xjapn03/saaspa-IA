@@ -69,9 +69,12 @@ saaspa:
   llm:
     # Timeouts del cliente HTTP hacia el modelo (ADR 0009). Aparte del cliente del backend.
     connect-timeout: ${LLM_CONNECT_TIMEOUT:3s}
-    read-timeout: ${LLM_READ_TIMEOUT:30s}
+    read-timeout: ${LLM_READ_TIMEOUT:10s}
     # Tope total del turno conversacional (llamada al modelo + herramientas).
-    turn-deadline: ${LLM_TURN_DEADLINE:35s}
+    # Escalera end-to-end (ADR 0014): read-timeout (10s) < turn-deadline (20s) < IA_BOT_TIMEOUT_MS
+    # del backend (25s). El deadline NUNCA debe superar el timeout con el que NestJS llama a este
+    # servicio: si lo supera, el backend corta antes y quedan turnos huerfanos gastando tokens.
+    turn-deadline: ${LLM_TURN_DEADLINE:20s}
   backend:
     base-url: ${BACKEND_URL:http://localhost:3001}
     internal-api-key: ${INTERNAL_API_KEY:}

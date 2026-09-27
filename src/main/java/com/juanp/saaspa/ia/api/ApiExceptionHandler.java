@@ -69,8 +69,13 @@ public class ApiExceptionHandler {
 	@ExceptionHandler(LlmTimeoutException.class)
 	public ProblemDetail llmTimeout(LlmTimeoutException exception) {
 		log.warn("Turno sin respuesta del modelo: {}", exception.getClass().getSimpleName());
-		return problem(HttpStatus.GATEWAY_TIMEOUT, "Modelo no disponible",
+		ProblemDetail problem = problem(HttpStatus.GATEWAY_TIMEOUT, "Modelo no disponible",
 				"El modelo no respondio a tiempo; intenta de nuevo en un momento");
+		if (exception.turnId() != null) {
+			// ADR 0014: el turnId correlaciona este 504 con la fila DEADLINE de ia.turn_log y con NestJS.
+			problem.setProperty("turnId", exception.turnId());
+		}
+		return problem;
 	}
 
 	@ExceptionHandler(TenantNotAllowedException.class)

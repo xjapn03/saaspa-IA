@@ -120,6 +120,7 @@ class ChatControllerTest {
 		assertThat(turnLog.getValue().tokensIn()).isEqualTo(1200);
 		assertThat(turnLog.getValue().tokensOut()).isEqualTo(80);
 		assertThat(turnLog.getValue().latencyMs()).isGreaterThanOrEqualTo(0);
+		assertThat(turnLog.getValue().status()).isEqualTo(TurnLogService.Status.OK);
 	}
 
 	@Test
@@ -252,7 +253,7 @@ class ChatControllerTest {
 	}
 
 	@Test
-	@DisplayName("un modelo que no responde a tiempo se traduce a 504 con ProblemDetail")
+	@DisplayName("un modelo que no responde a tiempo se traduce a 504 con ProblemDetail y turnId (ADR 0014)")
 	void mapsModelTimeoutToGatewayTimeout() throws Exception {
 		given(this.customerAgent.reply(any(TurnToken.class), any(String.class)))
 				.willAnswer(invocation -> {
@@ -266,7 +267,17 @@ class ChatControllerTest {
 				.content(requestJson("kamerinos", "CLIENTAS", "Que servicios tienen?")))
 				.andExpect(status().isGatewayTimeout())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-				.andExpect(jsonPath("$.title").value("Modelo no disponible"));
+				.andExpect(jsonPath("$.title").value("Modelo no disponible"))
+				.andExpect(jsonPath("$.turnId").value(TURN_ID.toString()));
+
+		// A-08/ADR 0014: el turno cortado por el deadline deja fila, con estado DEADLINE.
+		ArgumentCaptor<TurnLogService.TurnLog> turnLog = ArgumentCaptor.forClass(TurnLogService.TurnLog.class);
+		then(this.turnLogService).should().record(turnLog.capture());
+		assertThat(turnLog.getValue().turnId()).isEqualTo(TURN_ID);
+		assertThat(turnLog.getValue().status()).isEqualTo(TurnLogService.Status.DEADLINE);
+		assertThat(turnLog.getValue().tokensIn()).isZero();
+		assertThat(turnLog.getValue().tokensOut()).isZero();
+		assertThat(turnLog.getValue().model()).isNull();
 	}
 
 	@Test

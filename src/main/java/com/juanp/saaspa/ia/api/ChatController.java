@@ -104,20 +104,24 @@ public class ChatController {
 			completionTokens = 0;
 		}
 		else {
-			CustomerAgent.CustomerReply reply = this.replyWithDeadline(turnToken, request.message().text());
-			replyText = reply.text();
-			model = reply.model();
-			promptVersion = reply.promptVersion();
-			promptTokens = reply.promptTokens();
-			completionTokens = reply.completionTokens();
+			try {
+				CustomerAgent.CustomerReply reply = this.replyWithDeadline(turnToken, request.message().text());
+				replyText = reply.text();
+				model = reply.model();
+				promptVersion = reply.promptVersion();
+				promptTokens = reply.promptTokens();
+				completionTokens = reply.completionTokens();
+			}
+			catch (LlmTimeoutException ex) {
+				// ADR 0014: un turno cortado por el deadline tambien deja fila, con estado (A-08).
+				recordTurn(request, turnToken, TurnLogService.Status.DEADLINE, null, null, 0, 0, elapsedMs(start));
+				throw ex;
+			}
 		}
-		long latencyMs = (System.nanoTime() - start) / 1_000_000;
+		long latencyMs = elapsedMs(start);
 
-		this.turnLogService.record(new TurnLogService.TurnLog(request.turnId(), turnToken.tenantId(),
-				turnToken.conversationId(), turnToken.channel().name(), turnToken.agent().name(), turnToken.userId(),
-				turnToken.role() == null ? null : turnToken.role().name(), promptVersion, model,
-				promptTokens == null ? 0 : promptTokens,
-				completionTokens == null ? 0 : completionTokens, latencyMs));
+		recordTurn(request, turnToken, TurnLogService.Status.OK, promptVersion, model,
+				promptTokens == null ? 0 : promptTokens, completionTokens == null ? 0 : completionTokens, latencyMs);
 
 		return new ChatResponseDto(request.turnId(),
 				new ChatResponseDto.Reply(replyText, List.of()),
@@ -127,9 +131,26 @@ public class ChatController {
 	}
 
 	/**
+	 * Registra el turno en {@code ia.turn_log} con su estado (ADR 0014). El registro nunca tumba el turno:
+	 * si la escritura falla, {@link TurnLogService} lo anota y sigue.
+	 */
+	private void recordTurn(ChatRequestDto request, TurnToken turnToken, TurnLogService.Status status,
+			String promptVersion, String model, int tokensIn, int tokensOut, long latencyMs) {
+		this.turnLogService.record(new TurnLogService.TurnLog(request.turnId(), turnToken.tenantId(),
+				turnToken.conversationId(), turnToken.channel().name(), turnToken.agent().name(), turnToken.userId(),
+				turnToken.role() == null ? null : turnToken.role().name(), promptVersion, model, tokensIn, tokensOut,
+				latencyMs, status));
+	}
+
+	private static long elapsedMs(long startNanos) {
+		return (System.nanoTime() - startNanos) / 1_000_000;
+	}
+
+	/**
 	 * Llama al agente con un deadline por turno (ADR 0009): si se supera
 	 * {@code saaspa.llm.turn-deadline}, se <strong>cancela</strong> la llamada en vuelo (interrupcion
-	 * del hilo) y el turno falla con {@link LlmTimeoutException} (504).
+	 * del hilo) y el turno falla con {@link LlmTimeoutException} (504), que lleva el {@code turnId} para
+	 * correlacionar (ADR 0014).
 	 */
 	private CustomerAgent.CustomerReply replyWithDeadline(TurnToken turnToken, String message) {
 		Future<CustomerAgent.CustomerReply> future = TURN_EXECUTOR
@@ -139,12 +160,12 @@ public class ChatController {
 		}
 		catch (TimeoutException ex) {
 			future.cancel(true);
-			throw new LlmTimeoutException("El modelo no respondio a tiempo");
+			throw new LlmTimeoutException("El modelo no respondio a tiempo", turnToken.turnId());
 		}
 		catch (InterruptedException ex) {
 			future.cancel(true);
 			Thread.currentThread().interrupt();
-			throw new LlmTimeoutException("El turno fue interrumpido");
+			throw new LlmTimeoutException("El turno fue interrumpido", turnToken.turnId());
 		}
 		catch (ExecutionException ex) {
 			Throwable cause = ex.getCause();
