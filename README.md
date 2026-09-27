@@ -9,8 +9,9 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 > criterio de aceptación E2E validado contra el backend real (turn token, tenant, herramienta y LLM reales).
 > La evidencia del turno y la reconciliación de los contratos están en
 > [`docs/contracts/f1-e2e-validation.md`](./docs/contracts/f1-e2e-validation.md).
-> La Fase 2 (agenda por chat + cliente logueado) **no está abierta todavía**: espera al contenedor `ia-bot` y a
-> los valores de entorno de producción en `kamerinos-infra`.
+> La Fase 2 (agenda por chat + cliente logueado) **no está abierta todavía**: espera a que `kamerinos-infra`
+> aplique su parte del hallazgo H-02 (los números de la escalera de plazos y las variables del acople en su
+> compose/`.env`). La parte de este repo —la imagen del contenedor `ia-bot`— ya está (ver "Contenedor").
 > El plan completo está en [`AI_WhatsApp_SaaS_Roadmap_2026.md`](./AI_WhatsApp_SaaS_Roadmap_2026.md).
 
 ## Qué es (y qué no es)
@@ -63,6 +64,30 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 - **Java 21 (LTS)**. Fedora 44 ya no empaqueta `java-21-openjdk` (solo 25/27); instálalo con
   [SDKMAN](https://sdkman.io/): `sdk install java 21.0.12-tem`. Compila y testea con `./mvnw -B verify`.
 
+## Contenedor (imagen `ia-bot`)
+
+El `Dockerfile` construye la imagen que usa `kamerinos-infra` (servicio `ia-bot`, **sin puertos publicados**:
+solo lo llama el backend por la red interna). Las credenciales del esquema `ia` se toman de `DATABASE_URL`,
+`DATABASE_USER` y `DATABASE_PASSWORD` (ver `application.yml`).
+
+```bash
+docker build -t saaspa-ia:local .
+
+# Contra el Postgres del docker-compose de desarrollo (5433 en el host):
+docker compose up -d postgres
+docker run --rm --network=host \
+  -e DATABASE_URL=jdbc:postgresql://localhost:5433/saaspa_ia \
+  -e DATABASE_USER=saaspa -e DATABASE_PASSWORD=saaspa \
+  -e LLM_API_KEY=dummy \
+  saaspa-ia:local
+
+curl http://localhost:8000/actuator/health   # {"status":"UP"}
+```
+
+Sin `DATABASE_URL` el arranque **falla cerrado** (conexión rechazada): no hay *fallback* silencioso a una base
+local. El CI construye la imagen en el job `image` (después de `verify`); el arranque contra PostgreSQL real se
+valida a mano con los comandos de arriba.
+
 ## Stack
 
 | Capa | Tecnología |
@@ -80,6 +105,7 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 saaspa-IA/
 ├── AGENTS.md                    # fuente de verdad
 ├── pom.xml  mvnw  mvnw.cmd
+├── Dockerfile  .dockerignore    # imagen del contenedor `ia-bot`
 ├── docker-compose.yml           # infra de desarrollo (pgvector pg15)
 ├── .env.example
 ├── docs/

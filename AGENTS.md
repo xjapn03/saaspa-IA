@@ -272,8 +272,8 @@ Resuelto respecto del snapshot inicial de Initializr:
 - El criterio de aceptación **E2E** se cumplió con el backend real y el turno quedó registrado en
   `ia.turn_log` / `ia.tool_call_log`. Evidencia y reconciliación de los contratos:
   `docs/contracts/f1-e2e-validation.md`.
-- Lo que falta para un despliegue real no está en este repo: el contenedor `ia-bot` y los valores de
-  entorno de producción en `kamerinos-infra` (ver §11.5).
+- Lo que falta para un despliegue real ya **no** es el contenedor (el `Dockerfile` está en este repo desde
+  H-02, 2026-09-26): son los **valores y los números** en `kamerinos-infra` (ver §11.5 y la nota de H-02 en §7).
 
 ### Discrepancias verificadas durante T1.0 (2026-09-24)
 
@@ -319,6 +319,32 @@ persistida en `ia.turn_log`/`ia.tool_call_log`. Informe completo:
 - El registro del E2E guardó `prompt_version = customer-agent.v1` (el run fue anterior a PR #20/#21) y
   dejó una fila `USER` sin `turn_log`: corrobora **A-08** (los turnos fallidos no se registran).
 
+### Contenedor `ia-bot` (H-02, primera mitad hecha 2026-09-26)
+
+La segunda revisión conjunta (`docs/reviews/2026-09-26-joint-integration-review-2.md`, hallazgo **H-02**)
+detectó que `kamerinos-infra` construye el `ia-bot` desde `../saaspa-IA` con `dockerfile: Dockerfile` y que
+este repo **no tenía `Dockerfile`**: el contenedor no se podía construir. Resuelto en la rama
+`fix/h02-dockerfile-and-boot`:
+
+- `Dockerfile` multi-etapa (build `maven:3.9-eclipse-temurin-21` → runtime `eclipse-temurin:21-jre`), usuario
+  no root, `MaxRAMPercentage=75` porque el compose limita el contenedor a 768 MB, y `EXPOSE 8000`. Es el
+  **patrón** del Dockerfile de `saaspa-backend` adaptado a Java (allí es Node), no una copia. Con su
+  `.dockerignore` (cuidando de no excluir `src/main/resources/prompts/*.md`).
+- **Segundo agujero del mismo hallazgo, encontrado al verificar:** las credenciales del datasource vivían solo
+  en el perfil `local`, así que el contenedor habría arrancado sin URL de datasource (`Failed to configure a
+  DataSource` + Flyway) **aunque el `Dockerfile` existiera**. `spring.datasource.url/username/password` pasan
+  a `application.yml` con los nombres que inyecta el despliegue (`DATABASE_URL` / `DATABASE_USER` /
+  `DATABASE_PASSWORD`, que Spring Boot **no** traduce por sí solo), y `application-local.yml` queda solo con el
+  nivel de log (una sola fuente de verdad; si falta la variable en producción el arranque falla cerrado).
+- Job `image` en el CI (`.github/workflows/verify.yml`, `docker build` después de `verify`) para que el fichero
+  no vuelva a desaparecer o romperse sin que nadie lo note. El CI valida **construcción**; el **arranque** se
+  validó a mano: `docker run` contra el Postgres del `docker-compose.yml` del repo, `/actuator/health` en `UP`
+  y el esquema `ia` migrado por Flyway.
+- **Lo que queda (y no es de este repo):** el `ia-bot` del compose fija `LLM_READ_TIMEOUT: 30s` /
+  `LLM_TURN_DEADLINE: 35s` —la escalera invertida que ADR 0014 vino a corregir— y no trae `IA_BOT_TIMEOUT_MS`
+  en el bloque `backend`; ninguna de las variables del acople está en su `.env.example`. Pedido en **11.5**.
+  Mientras no se aplique, el despliegue **reintroduce J-04**.
+
 ---
 
 ## 8. Estructura objetivo y convenciones de código
@@ -328,6 +354,7 @@ saaspa-IA/
 ├── AGENTS.md
 ├── README.md
 ├── pom.xml  mvnw  mvnw.cmd
+├── Dockerfile  .dockerignore          # imagen del contenedor `ia-bot` (kamerinos-infra)
 ├── docker-compose.yml                 # solo desarrollo local (Postgres+pgvector; Redis vuelve en Fase 2)
 ├── .env.example
 ├── docs/
@@ -681,9 +708,16 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
 
 ### 11.5 Otros repos y contratos
 
-- **kamerinos-infra (pendiente):** añadir el contenedor `ia-bot` a la red interna; PostgreSQL con pgvector y
-  usuario con permisos solo sobre el esquema `ia`; variables de entorno de 11.4. El repositorio no se toca
-  desde 2026-09-18 y todavía no tiene el contenedor: es la coordinación que falta **antes de abrir la Fase 2**.
+- **kamerinos-infra (pendiente; pedido de H-02, 2026-09-26):** añadir el contenedor `ia-bot` a la red interna
+  (el `Dockerfile` ya existe en este repo); PostgreSQL con pgvector y usuario con permisos solo sobre el
+  esquema `ia`; variables de entorno de 11.4. Lo que falta **en su compose/`.env`**:
+  (1) los tres números de la escalera de ADR 0014 —`LLM_READ_TIMEOUT: 10s` y `LLM_TURN_DEADLINE: 20s` en
+  `ia-bot`, y `IA_BOT_TIMEOUT_MS: 25000` en `backend`, o **quitar los tres** y dejar los valores por defecto
+  que anclan las pruebas—, porque hoy trae 30 s/35 s y **reintroduce J-04**;
+  (2) las variables del acople que no están en su `.env.example` (`LLM_*`, `TURN_TOKEN_PUBLIC_KEY`, las claves
+  de servicio…): Compose las resuelve a cadena vacía y el primer turno da 401/500;
+  (3) `TZ` del contenedor (`America/Bogota`) coherente con `IA_TENANT_TIMEZONE` (J-06).
+  El repositorio no se toca desde 2026-09-18: es la coordinación que falta **antes de abrir la Fase 2**.
   (La antigua duda de la TZ del contenedor del backend quedó resuelta: la disponibilidad se devuelve con
   offset explícito calculado con `Intl/ICU`.)
 - **saaspa-frontend:** el chat web habla con `POST /api/chat` de NestJS, **nunca** directamente con este servicio.
@@ -753,6 +787,13 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [x] `.github/pull_request_template.md` creada
 - [ ] Protección de ramas configurada por la persona (PR obligatorio, check `verify`, sin push directo)
 - [x] JDK 21 con `javac` instalado en el equipo (SDKMAN Temurin 21; documentado en el README — 2026-09-25)
+- [x] `Dockerfile` + `.dockerignore` de la imagen `ia-bot` (patrón del de `saaspa-backend`, adaptado a
+      Java 21/Spring Boot), job `image` en el CI y **credenciales del datasource en `application.yml`** (segundo
+      agujero de H-02: sin esa traducción el contenedor no arrancaba ni con `Dockerfile`); validado con `docker
+      build` + `docker run` contra el Postgres del `docker-compose.yml`, `/actuator/health` en `UP` y el esquema
+      `ia` migrado por Flyway — rama `fix/h02-dockerfile-and-boot`, 2026-09-26
+- [ ] H-02, lado de `kamerinos-infra` (**no** de este repo): escalera 10 s/20 s/25 s en su compose,
+      `IA_BOT_TIMEOUT_MS` en el bloque `backend` y las variables del acople en su `.env.example` — pedido en §11.5
 
 ### Fase 0 — Alineación y contratos (completada 2026-09-23)
 - [x] Ramas `main` y `develop` configuradas; trabajo en `feature/f0-alineacion`
@@ -979,6 +1020,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — fix/timeout-ladder — **ADR 0014** (Aceptada, ola 3 del triaje) y la mitad de **J-04** que cae en este repo: `saaspa.llm.read-timeout` de 30 s a **10 s** y `turn-deadline` de 35 s a **20 s** (escalera `read-timeout < turn-deadline < IA_BOT_TIMEOUT_MS` del backend, 25 s; **el PR no se fusiona** hasta revisar los dos números juntos), `turnId` en el `ProblemDetail` del 504 y turno cortado por el deadline registrado en `ia.turn_log` con `status = DEADLINE` (migración Flyway `V2` + `TurnLogService.Status`); contrato de chat (504 y `turnId`), tests de contrato (504 con `turnId` y fila `DEADLINE`) y de Testcontainers (estado persistido) actualizados — verify verde (117 tests). **No se fusiona** hasta revisar los dos números con el backend.
 - 2026-09-26 — docs/accept-adr-0013-handoff-destination — **ADR 0013 pasa a Aceptada** con el destino decidido: aviso **por correo al staff** reutilizando el módulo de correo de `saaspa-backend` (SendGrid), **no** WhatsApp (fuera de la ventana de 24 h la API de WhatsApp Business exige plantilla pre-aprobada por Meta), y la bandeja del dashboard pospuesta hasta que exista el widget (J-02). Se documenta con evidencia (archivo:línea) que **la memoria no guarda el mensaje en un turno con handoff** (`ChatController.java:90,97-105,108`; `CustomerAgent.java:77`; `CustomerAgentConfig.java:45-48,63`, y `javap` sobre `MessageChatMemoryAdvisor`: escribe en `before`/`after`, y ninguno corre sin llamada al modelo), así que el backend debe capturar el texto del turno derivado; §4, §12 y §13 de AGENTS.md y el triaje al día; **sin código en esta rama** — verify verde (117 tests).
 - 2026-09-26 — feature/f2-per-tenant-cost-guard — **mitad de ADR 0010 en este repo** (J-03, A-06): `usage/TurnCostGuard` + `CostGuardProperties` con ventana de 1 h y cuatro topes (240 turnos y 1.000.000 tokens por tenant; 30 turnos y 150.000 tokens por conversación, con los números justificados en `application.yml`/`.env.example` como el `BOOKING_PAYMENT_TTL_MINUTES` del backend), medidos con una consulta agregada sobre `ia.turn_log` (**sin contador en memoria**: un reinicio no borra el consumo) y **429** con `ProblemDetail` (`scope`, `measure`, `measured`, `limit`, `window`); se evalúa solo en el camino que llama al modelo (un turno con handoff no se corta por presupuesto, R10) y el turno rechazado no se registra; contrato `chat-api` con el 429; tests: `TurnCostGuardTest` (7, Testcontainers: los cuatro topes, ventana deslizante y aislamiento por tenant), `ChatControllerTest` (429 sin llamar al modelo ni registrar turno, y el guardia consultado en el camino normal) y `ChatControllerHandoffTest` (con handoff el guardia no se consulta); **más el test prometido en el PR de ADR 0013**: `ChatApiTurnIntegrationTest` fija que la memoria **queda vacía** en un turno con handoff y que **se escribe** en uno normal — verify verde (127 tests).
+- 2026-09-26 — fix/h02-dockerfile-and-boot — **H-02, la mitad de este repo** (segunda revisión conjunta): `Dockerfile` multi-etapa (`docker.io/library/maven:3.9-eclipse-temurin-21` → `docker.io/library/eclipse-temurin:21-jre`, usuario no root, `MaxRAMPercentage=75` por el `mem_limit: 768m` del compose, `EXPOSE 8000`, `ENTRYPOINT java -jar`) con sus comentarios de por qué `mvn` de la imagen y no `./mvnw`, más `.dockerignore` (sin excluir los prompts de `src/main/resources`) y job `image` del CI (`docker build`, después de `verify`); **segundo agujero del mismo hallazgo, encontrado al verificar**: las credenciales del datasource solo vivían en el perfil `local`, así que el contenedor habría arrancado sin URL de datasource (`Failed to configure a DataSource`) aunque el `Dockerfile` existiera — `spring.datasource.url/username/password` pasan a `application.yml` con los nombres del despliegue (`DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD`, que Boot **no** traduce por sí solo) y `application-local.yml` queda solo con el nivel de log; nombres de imagen cualificados por el registro porque en el equipo `docker` es Podman y la resolución de nombres cortos exige TTY; informe de la segunda revisión conjunta versionado **sin editar**; §7 (nota nueva del contenedor), §8 (árbol), §11.5 (pedido a `kamerinos-infra`: escalera 10/20/25 s, `IA_BOT_TIMEOUT_MS`, variables en su `.env.example`), §12 (dos entradas del checklist) y README ("Contenedor") al día — **validado**: `./mvnw -B verify` verde (127 tests), `docker build` y `docker run` contra el Postgres del `docker-compose.yml` con `/actuator/health` en `UP` y el esquema `ia` migrado por Flyway.
 
 ---
 
