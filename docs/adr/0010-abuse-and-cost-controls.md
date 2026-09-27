@@ -1,7 +1,10 @@
 # ADR 0010: Control de abuso y tope de coste
 
-- **Estado:** Propuesta (pendiente de aceptación; no implementada)
+- **Estado:** Aceptada (2026-09-26)
 - **Fecha:** 2026-09-26
+- **Implementación:** pendiente. La mitad del backend (sesión no falsificable y `trust proxy` de un salto)
+  ya está fusionada (PR #76) y este ADR la da por buena; la mitad de este repo —tope global por tenant y
+  coste por conversación— queda como tarea aparte, ya identificada en el checklist de la Fase 2.
 - **Origen:** hallazgo **J-03** de `docs/reviews/2026-09-26-joint-integration-review.md`; ola 1 del triaje
   (`docs/reviews/2026-09-26-joint-review-triage.md`).
 

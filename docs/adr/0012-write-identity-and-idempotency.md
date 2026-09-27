@@ -1,7 +1,9 @@
 # ADR 0012: Identidad de las herramientas de escritura e idempotencia
 
-- **Estado:** Propuesta (pendiente de aceptación; no implementada)
+- **Estado:** Aceptada (2026-09-26)
 - **Fecha:** 2026-09-26
+- **Implementación:** pendiente (es bloqueante de cualquier herramienta de escritura de la Fase 2). No hay
+  objeciones abiertas: solo falta implementarla.
 - **Origen:** hallazgos **J-08** y **J-09** del informe conjunto; ola 1 del triaje.
 - **Base:** **ADR 0008** (ya fija la `Idempotency-Key` derivada de `turnId` + acción) y **ADR 0006** (turn
   token con `userId`/`role`). Esta ADR no reemplaza a ninguna de las dos: las precisa para la escritura.
