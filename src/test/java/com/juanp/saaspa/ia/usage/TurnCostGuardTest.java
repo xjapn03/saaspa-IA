@@ -232,8 +232,8 @@ class TurnCostGuardTest {
 	@Test
 	@DisplayName("un turno sin origen se tolera: no entra en cubetas de origen y sigue contando al tenant (ADR 0020)")
 	void turnsWithoutOriginAreTolerated() {
-		// Cuatro filas sin origen (el backend aun no emite el claim clientIp): `origin_hash = NULL` no es
-		// cierto para ninguna fila, asi que no llenan la cubeta de origen de nadie.
+		// Cuatro filas sin origen (un turno sin el claim clientIp, el patron anterior al PR #84 del backend):
+		// `origin_hash = NULL` no es cierto para ninguna fila, asi que no llenan la cubeta de origen de nadie.
 		insertTurn("kamerinos", "conv-1", 10, TurnLogService.Status.OK, null, Duration.ofMinutes(5));
 		insertTurn("kamerinos", "conv-2", 10, TurnLogService.Status.OK, null, Duration.ofMinutes(4));
 		insertTurn("kamerinos", "conv-3", 10, TurnLogService.Status.OK, null, Duration.ofMinutes(3));

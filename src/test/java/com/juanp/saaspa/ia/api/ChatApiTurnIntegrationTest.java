@@ -110,6 +110,8 @@ class ChatApiTurnIntegrationTest {
 		registry.add("saaspa.backend.internal-api-key", () -> "test-key");
 		registry.add("saaspa.tenant.default", () -> "kamerinos");
 		registry.add("saaspa.cost-guard.origin-salt", () -> ORIGIN_SALT);
+		// Tope por origen pequeno para poder verlo saltar con tres turnos (ADR 0020).
+		registry.add("saaspa.cost-guard.origin-max-turns", () -> "2");
 	}
 
 	@Value("${local.server.port}")
@@ -234,11 +236,54 @@ class ChatApiTurnIntegrationTest {
 				.isEqualTo("OK");
 	}
 
+	@Test
+	@DisplayName("sin el claim clientIp el turno se registra sin origen y no se le aplica el tope (ADR 0020)")
+	void turnWithoutTheClaimIsRecordedWithoutOrigin() {
+		// Token sin `clientIp`: el patron que emitia el backend antes de su PR #84 (variante tolerante).
+		ResponseEntity<String> response = postWithoutOriginClaim("¿Cuánto cuesta el masaje relajante?");
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(count("ia.turn_log")).isEqualTo(1);
+		assertThat(count("ia.turn_log WHERE origin_hash IS NULL")).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("con el claim clientIp el tope por origen corta con 429 y scope origin, sin llamar al modelo (ADR 0020)")
+	void originCapRejectsTurnsOverTheLimit() {
+		// Dos turnos del mismo origen agotan el tope del test (saaspa.cost-guard.origin-max-turns=2).
+		assertThat(post("¿Cuánto cuesta el masaje relajante?").getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(post("¿Y el de 90 minutos?").getStatusCode()).isEqualTo(HttpStatus.OK);
+		int callsBefore = ScriptedChatModel.CALLS.get();
+
+		// El tercero se rechaza antes de llamar al modelo (es el caso de H-04: el origen ya consumio su cupo).
+		assertThatThrownBy(() -> post("¿Y el facial?"))
+				.isInstanceOf(HttpClientErrorException.TooManyRequests.class)
+				.satisfies(exception -> assertThat(
+						((HttpClientErrorException) exception).getResponseBodyAsString())
+						.contains("\"scope\":\"origin\"").contains("\"measure\":\"turns\""));
+
+		assertThat(ScriptedChatModel.CALLS.get()).isEqualTo(callsBefore);
+		// El turno rechazado no deja fila (ADR 0010) y las dos que hay llevan el origen hasheado.
+		assertThat(count("ia.turn_log")).isEqualTo(2);
+		assertThat(count("ia.turn_log WHERE origin_hash IS NULL")).isZero();
+	}
+
 	private ResponseEntity<String> post(String message) {
+		return post(message, claims());
+	}
+
+	/** Turno con un token sin el claim {@code clientIp}: el patron del backend antes de su PR #84. */
+	private ResponseEntity<String> postWithoutOriginClaim(String message) {
+		Map<String, Object> claims = claims();
+		claims.remove("clientIp");
+		return post(message, claims);
+	}
+
+	private ResponseEntity<String> post(String message, Map<String, Object> claims) {
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_JSON);
 		headers.set("X-Internal-Api-Key", SERVICE_KEY);
-		headers.setBearerAuth(TestTurnTokens.signValid(SIGNING_KEY, KID, claims()));
+		headers.setBearerAuth(TestTurnTokens.signValid(SIGNING_KEY, KID, claims));
 		return this.restTemplate.postForEntity(url("/api/v1/chat"), new HttpEntity<>(body(message), headers),
 				String.class);
 	}
@@ -260,7 +305,7 @@ class ChatApiTurnIntegrationTest {
 		claims.put("jti", TURN_ID.toString());
 		claims.put("agent", "CLIENTAS");
 		claims.put("tenantId", "kamerinos");
-		// Claim de origen (ADR 0020 / H-04): lo emitira saaspa-backend con la IP resuelta por su proxy.
+		// Claim de origen (ADR 0020 / H-04): lo emite saaspa-backend (su PR #84) con la IP resuelta por su proxy.
 		claims.put("clientIp", CLIENT_IP);
 		return claims;
 	}
