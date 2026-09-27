@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
@@ -104,6 +105,18 @@ class ChatControllerHandoffTest {
 				// ADR 0010: un turno con handoff no llama al modelo, asi que no consulta el tope de coste
 				// (y por tanto nunca se corta por presupuesto).
 				then(turnCostGuard).shouldHaveNoInteractions();
+
+				// ADR 0015 (punto 3 de ADR 0013): el turno derivado se registra con su propio estado y su
+				// motivo, de modo que desde ia.turn_log no se confunde con un turno normal.
+				ArgumentCaptor<TurnLogService.TurnLog> turnLog = ArgumentCaptor
+						.forClass(TurnLogService.TurnLog.class);
+				then(turnLogService).should().record(turnLog.capture());
+				assertThat(turnLog.getValue().status()).isEqualTo(TurnLogService.Status.HANDOFF);
+				assertThat(turnLog.getValue().handoffReason()).isEqualTo("HEALTH_TOPIC");
+				assertThat(turnLog.getValue().errorCode()).isNull();
+				assertThat(turnLog.getValue().model()).isNull();
+				assertThat(turnLog.getValue().tokensIn()).isZero();
+				assertThat(turnLog.getValue().tokensOut()).isZero();
 			}
 			finally {
 				SecurityContextHolder.clearContext();

@@ -19,6 +19,8 @@ import com.juanp.saaspa.ia.agent.customer.CustomerAgent;
 import com.juanp.saaspa.ia.agent.handoff.HandoffPolicy;
 import com.juanp.saaspa.ia.api.dto.ChatRequestDto;
 import com.juanp.saaspa.ia.api.dto.ChatResponseDto;
+import com.juanp.saaspa.ia.backend.BackendException;
+import com.juanp.saaspa.ia.backend.BackendUnavailableException;
 import com.juanp.saaspa.ia.config.LlmProperties;
 import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
@@ -98,6 +100,8 @@ public class ChatController {
 		String promptVersion;
 		Integer promptTokens;
 		Integer completionTokens;
+		TurnLogService.Status status;
+		String handoffReason = null;
 		if (handoff.requested()) {
 			// R10: ante un tema sensible no se llama al modelo ni se devuelve su texto; la respuesta
 			// es canonica y la escribe el codigo.
@@ -106,11 +110,17 @@ public class ChatController {
 			promptVersion = null;
 			promptTokens = 0;
 			completionTokens = 0;
+			// ADR 0015 (punto 3 de ADR 0013): el turno derivado deja fila con su propio estado y su
+			// motivo, para que sea distinguible y auditable desde ia.turn_log. No llamo al modelo, asi
+			// que no consume presupuesto y el guard de coste no lo cuenta.
+			status = TurnLogService.Status.HANDOFF;
+			handoffReason = handoff.reason().name();
 		}
 		else {
 			// ADR 0010: el tope de coste se evalua solo en el camino que llama al modelo. Un turno
 			// resuelto por HandoffPolicy no gasta tokens, asi que no se corta por presupuesto (R10 no
-			// depende del coste).
+			// depende del coste). El turno rechazado por el tope NO se registra, para que un abuso no
+			// escriba filas que alimenten su propio tope.
 			this.turnCostGuard.check(turnToken.tenantId(), turnToken.conversationId());
 			try {
 				CustomerAgent.CustomerReply reply = this.replyWithDeadline(turnToken, request.message().text());
@@ -119,16 +129,26 @@ public class ChatController {
 				promptVersion = reply.promptVersion();
 				promptTokens = reply.promptTokens();
 				completionTokens = reply.completionTokens();
+				status = TurnLogService.Status.OK;
 			}
 			catch (LlmTimeoutException ex) {
 				// ADR 0014: un turno cortado por el deadline tambien deja fila, con estado (A-08).
-				recordTurn(request, turnToken, TurnLogService.Status.DEADLINE, null, null, 0, 0, elapsedMs(start));
+				recordTurn(request, turnToken, TurnLogService.Status.DEADLINE, null, null, null, null, 0, 0,
+						elapsedMs(start));
+				throw ex;
+			}
+			catch (RuntimeException ex) {
+				// ADR 0015 (H-05): el modelo ya se llamo, asi que el turno gasto presupuesto aunque no
+				// haya respuesta. Sin esta fila, ia.turn_log no seria la fuente de verdad del consumo que
+				// promete ADR 0010. Los tokens se desconocen y quedan en 0 (cota inferior).
+				recordTurn(request, turnToken, TurnLogService.Status.ERROR, null, errorCode(ex).name(), null, null,
+						0, 0, elapsedMs(start));
 				throw ex;
 			}
 		}
 		long latencyMs = elapsedMs(start);
 
-		recordTurn(request, turnToken, TurnLogService.Status.OK, promptVersion, model,
+		recordTurn(request, turnToken, status, handoffReason, null, promptVersion, model,
 				promptTokens == null ? 0 : promptTokens, completionTokens == null ? 0 : completionTokens, latencyMs);
 
 		return new ChatResponseDto(request.turnId(),
@@ -139,15 +159,36 @@ public class ChatController {
 	}
 
 	/**
-	 * Registra el turno en {@code ia.turn_log} con su estado (ADR 0014). El registro nunca tumba el turno:
-	 * si la escritura falla, {@link TurnLogService} lo anota y sigue.
+	 * Registra el turno en {@code ia.turn_log} con su estado (ADR 0014 y ADR 0015). El registro nunca
+	 * tumba el turno: si la escritura falla, {@link TurnLogService} lo anota y sigue.
 	 */
 	private void recordTurn(ChatRequestDto request, TurnToken turnToken, TurnLogService.Status status,
-			String promptVersion, String model, int tokensIn, int tokensOut, long latencyMs) {
+			String handoffReason, String errorCode, String promptVersion, String model, int tokensIn, int tokensOut,
+			long latencyMs) {
 		this.turnLogService.record(new TurnLogService.TurnLog(request.turnId(), turnToken.tenantId(),
 				turnToken.conversationId(), turnToken.channel().name(), turnToken.agent().name(), turnToken.userId(),
 				turnToken.role() == null ? null : turnToken.role().name(), promptVersion, model, tokensIn, tokensOut,
-				latencyMs, status));
+				latencyMs, status, handoffReason, errorCode));
+	}
+
+	/**
+	 * Traduce el fallo de un turno que ya llamo al modelo a un {@link TurnLogService.ErrorCode} (ADR 0015).
+	 *
+	 * <p>El mapeo es por origen, que es lo que este metodo puede saber con certeza: la unica via por la que
+	 * una excepcion escapa del {@code try} es la llamada al agente, asi que lo que no sea un error del
+	 * backend es un fallo del camino del modelo (proveedor, argumentos de herramienta o fallo inesperado
+	 * dentro del agente). No se inspeccionan tipos del proveedor: el codigo tiene que seguir siendo valido
+	 * si cambia la version de Spring AI.
+	 */
+	private static TurnLogService.ErrorCode errorCode(RuntimeException exception) {
+		// BackendUnavailableException extiende BackendException: se comprueba primero la mas especifica.
+		if (exception instanceof BackendUnavailableException) {
+			return TurnLogService.ErrorCode.BACKEND_UNAVAILABLE;
+		}
+		if (exception instanceof BackendException) {
+			return TurnLogService.ErrorCode.BACKEND_ERROR;
+		}
+		return TurnLogService.ErrorCode.MODEL_ERROR;
 	}
 
 	private static long elapsedMs(long startNanos) {

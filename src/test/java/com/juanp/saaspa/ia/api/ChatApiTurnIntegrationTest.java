@@ -172,6 +172,16 @@ class ChatApiTurnIntegrationTest {
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(response.getBody()).contains("profesional").contains("\"reason\":\"HEALTH_TOPIC\"");
 		assertThat(ScriptedChatModel.CALLS.get()).isZero();
+
+		// ADR 0013 punto 3 / ADR 0015: el turno derivado deja fila con su estado y su motivo (y sin
+		// tokens), asi que desde ia.turn_log se distingue de un turno normal y queda auditable.
+		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
+				SELECT status, handoff_reason, error_code, tokens_in, tokens_out
+				FROM ia.turn_log WHERE turn_id = ?
+				""", TURN_ID);
+		assertThat(row).containsEntry("status", "HANDOFF").containsEntry("handoff_reason", "HEALTH_TOPIC")
+				.containsEntry("tokens_in", 0).containsEntry("tokens_out", 0);
+		assertThat(row.get("error_code")).isNull();
 	}
 
 	@Test

@@ -110,9 +110,12 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 | 0007 | Memoria y persistencia del agente | Ver [decisión D-MEM](#decisiones-abiertas). Esquema propio `ia` en PostgreSQL. Log durable de mensajes, tool calls y uso. |
 | 0008 | Política de herramientas de escritura | Solo lectura primero; escritura tras feature flag; confirmación explícita de la clienta; **idempotencia** (`Idempotency-Key`); auditoría de cada tool call. |
 
-**Aceptada después:** `docs/adr/0009-llm-timeouts-and-retry.md` (2026-09-25) y
+**Aceptada después:** `docs/adr/0009-llm-timeouts-and-retry.md` (2026-09-25),
 `docs/adr/0014-turn-deadline-ladder-and-correlation.md` (2026-09-26, ola 3 del triaje: ajusta los valores
-de la escalera de plazos y añade la correlación del 504 y el registro del turno cortado).
+de la escalera de plazos y añade la correlación del 504 y el registro del turno cortado) y
+`docs/adr/0015-turn-log-outcomes-and-cost-basis.md` (2026-09-26, H-05 de la segunda revisión conjunta:
+implementa el punto 3 de la ADR 0013, cierra el resto de A-08 que la 0014 dejó abierto y fija la base del
+cómputo del guard de coste: `status` con `HANDOFF`/`ERROR`, `handoff_reason` y `error_code`).
 
 **Ola 1 de la Fase 2** (2026-09-26 — ver el triaje conjunto, §3). **Las cuatro están Aceptadas**; la 0013 con el
 destino ya decidido:
@@ -841,8 +844,12 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
       J-08+J-09 identidad desde el turn token e idempotencia (ADR 0012) y J-05 handoff con destino y
       reversible (ADR 0013, coordinado con el backend)
 - [ ] **Misma pasada que los bloqueantes:** J-04 escalera de plazos y turno fallido registrado (ADR 0014,
-      coordinado), J-06 acople comprobable y campos muertos (ADR 0015) y J-07 contrato de error (ADR 0016,
+      coordinado), J-06 acople comprobable y campos muertos (ADR 0016) y J-07 contrato de error (ADR 0017,
       coordinado)
+- [x] **H-05 / A-08 (segunda revisión conjunta):** todo desenlace que llama al modelo deja fila en
+      `ia.turn_log` y el turno derivado deja `HANDOFF` con su motivo, así que `turn_log` es la fuente de
+      verdad que promete ADR 0010; el guard cuenta por "¿llamó al modelo?" (ADR 0015, migración `V3`,
+      `handoff_reason`/`error_code`) — rama `fix/h05-turn-log-outcomes`, 2026-09-26
 
 ### Fase 3 — Agente ADMIN + reportes
 - [ ] Agente ADMIN con permisos por rol
@@ -867,13 +874,22 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 
 - El mapeo completo de **J-01 a J-13** y del expiro de `PENDIENTE_PAGO` (etiquetado **B-01**, porque el informe
   no le dio ID) está en `docs/reviews/2026-09-26-joint-review-triage.md`: ola de prioridad, ADR propuesta
-  (0010 a 0018), tarea de checklist y rama propuesta o marca de coordinación con el backend.
+  (0010 a 0019), tarea de checklist y rama propuesta o marca de coordinación con el backend.
 - Olas (fijadas por la persona): **1** bloqueantes de la escritura (J-03, B-01, J-08+J-09, J-05); **2** piloto
   en paralelo (J-01, J-02); **3** misma pasada (J-04, J-06, J-07); **4** pueden esperar (J-10 a J-13).
 - ADR de la ola 1 en `docs/adr/`: `0010-abuse-and-cost-controls.md`, `0011-pending-payment-expiry.md`,
   `0012-write-identity-and-idempotency.md` y `0013-handoff-destination-and-reversibility.md` están
   **Aceptadas** (2026-09-26; la 0013 con el destino decidido: correo al staff con el módulo de `saaspa-backend`,
-  **no** WhatsApp). Las ADR 0014 a 0018 siguen como reserva del triaje.
+  **no** WhatsApp). **Reajuste de numeración (2026-09-26):** la **0015** se usó para los desenlaces del turno y
+  la base del cómputo de coste (H-05, `fix/h05-turn-log-outcomes`), así que las reservas del triaje corren un
+  número: J-06 pasa a **0016**, J-07 a **0017**, J-02 a **0018** y J-10 a **0019** (las reservas se anotan en
+  el propio triaje). Las ADR 0016 a 0019 siguen como reserva.
+- **Segunda revisión conjunta** (`docs/reviews/2026-09-26-joint-integration-review-2.md`, hallazgos H-01 a
+  H-06): **todavía sin triaje formal**. De este repo: **H-02** (mitad propia hecha, ver §7) y **H-05**
+  (cerrado con ADR 0015). Siguen abiertos y son de otros repos: **H-01** (carrera pago ↔ expiración, backend,
+  alta), **H-03** (entrega y reintento del aviso de handoff, backend) y **H-06** (consumidor del estado
+  `EXPIRADA`, frontend y backend); **H-04** (el 429 llega al widget como 502 y el techo del tenant) es de
+  backend, más la decisión de números de este lado.
 - **B-01 ya no tiene nada pendiente de este lado:** el backend implementó la expiración (PR #77, estado
   `EXPIRADA`), el contrato interno expone el estado y el caso `B01-franja-liberada-por-expiracion` está en el
   dataset `eval/` (real, no brecha).
@@ -930,7 +946,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | A-05 | Media | Fase 4 (antes de RAG) | `tenant_id`/RLS en la memoria (`spring_ai_chat_memory`); cubre C-08 |
 | A-06 | Media | **Resuelto (2026-09-26)** | Tope de coste por tenant y por conversación implementado en `usage/TurnCostGuard` (ADR 0010), medido sobre `ia.turn_log` y con 429; el `trust proxy`/sesión firmada y el tope por cuenta al crear citas son del backend (PR #76 fusionado y Fase 2) |
 | A-07 | Media | Fase 2 | Turnos no idempotentes (reintento NestJS duplica llamada/coste/memoria) |
-| A-08 | Media | Fase 2 | `turn_log` sin estado; turnos fallidos no se registran (corroborado por la evidencia del E2E: una fila `USER` de memoria sin fila en `turn_log`). **Parcial (ADR 0014):** el turno cortado por el deadline ya se registra con `status = DEADLINE`; el resto de desenlaces (502 del backend, errores inesperados) sigue sin fila |
+| A-08 | Media | **Resuelto (2026-09-26)** | `turn_log` sin estado y turnos fallidos sin fila. **ADR 0014:** el turno cortado por el deadline se registra con `status = DEADLINE`. **ADR 0015:** `status` pasa a `OK`/`HANDOFF`/`DEADLINE`/`ERROR` con `handoff_reason` y `error_code`, y todo turno que llamó al modelo deja fila (el 502 del backend y los errores inesperados ya no gastan presupuesto invisible); el guard cuenta por "¿llamó al modelo?" y el turno derivado se distingue. Queda como límite documentado que los tokens de los turnos fallidos son desconocidos (cota inferior) |
 | A-09 | Media-baja | Fase 2 | Memoria read-modify-write sin serialización por conversación |
 | A-11 | Media-baja | Fase 4 (antes del pedido de identidad) | `waId` viaja en el cuerpo, no en el turn token |
 | A-12 | Baja | Fase 5 (el dataset de T1.8 ya cubre el caso) | Sin guarda de salida sobre precios |
@@ -943,7 +959,7 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 | C-03 | Baja | Higiene | `usage.tokensIn/Out` tipados `integer` pero el código puede emitir `null` |
 | C-04 | Baja | Higiene | Límite de mensaje 1000 (`web-chat`) vs 2000 (`chat-api`) |
 | C-11 | Baja | Proceso | Rama `fix/deprecations-and-handoff` mezcló deprecaciones + T1.7 |
-| C-13 | Media-baja | Fase 2 | ADR 0007 dice que se guardan los turnos finales, pero los turnos con handoff no se guardan en la memoria (efecto de A-02) |
+| C-13 | Media-baja | Fase 2 | ADR 0007 dice que se guardan los turnos finales, pero los turnos con handoff no se guardan en la memoria (efecto de A-02). **ADR 0015 ya cubre la mitad del registro** (el turno derivado deja fila `HANDOFF` con su motivo en `ia.turn_log`); lo que queda es la memoria, que se resuelve en la Fase 2 |
 | A-24 | Media | Fase 4 (WhatsApp real) | El agente formatea con Markdown estándar (`**negrita**`, `##` encabezados, tablas), que WhatsApp **no** interpreta (usa `*un*` asterisco y no admite encabezados ni tablas): hace falta **salida consciente del canal** (Markdown para el chat web, sintaxis de WhatsApp para WhatsApp), no el mismo texto para los dos. Hallazgo de la prueba E2E real |
 
 ### Resuelto: estado del handoff (A-10) — decidido e implementado en el backend
@@ -1021,6 +1037,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — docs/accept-adr-0013-handoff-destination — **ADR 0013 pasa a Aceptada** con el destino decidido: aviso **por correo al staff** reutilizando el módulo de correo de `saaspa-backend` (SendGrid), **no** WhatsApp (fuera de la ventana de 24 h la API de WhatsApp Business exige plantilla pre-aprobada por Meta), y la bandeja del dashboard pospuesta hasta que exista el widget (J-02). Se documenta con evidencia (archivo:línea) que **la memoria no guarda el mensaje en un turno con handoff** (`ChatController.java:90,97-105,108`; `CustomerAgent.java:77`; `CustomerAgentConfig.java:45-48,63`, y `javap` sobre `MessageChatMemoryAdvisor`: escribe en `before`/`after`, y ninguno corre sin llamada al modelo), así que el backend debe capturar el texto del turno derivado; §4, §12 y §13 de AGENTS.md y el triaje al día; **sin código en esta rama** — verify verde (117 tests).
 - 2026-09-26 — feature/f2-per-tenant-cost-guard — **mitad de ADR 0010 en este repo** (J-03, A-06): `usage/TurnCostGuard` + `CostGuardProperties` con ventana de 1 h y cuatro topes (240 turnos y 1.000.000 tokens por tenant; 30 turnos y 150.000 tokens por conversación, con los números justificados en `application.yml`/`.env.example` como el `BOOKING_PAYMENT_TTL_MINUTES` del backend), medidos con una consulta agregada sobre `ia.turn_log` (**sin contador en memoria**: un reinicio no borra el consumo) y **429** con `ProblemDetail` (`scope`, `measure`, `measured`, `limit`, `window`); se evalúa solo en el camino que llama al modelo (un turno con handoff no se corta por presupuesto, R10) y el turno rechazado no se registra; contrato `chat-api` con el 429; tests: `TurnCostGuardTest` (7, Testcontainers: los cuatro topes, ventana deslizante y aislamiento por tenant), `ChatControllerTest` (429 sin llamar al modelo ni registrar turno, y el guardia consultado en el camino normal) y `ChatControllerHandoffTest` (con handoff el guardia no se consulta); **más el test prometido en el PR de ADR 0013**: `ChatApiTurnIntegrationTest` fija que la memoria **queda vacía** en un turno con handoff y que **se escribe** en uno normal — verify verde (127 tests).
 - 2026-09-26 — fix/h02-dockerfile-and-boot — **H-02, la mitad de este repo** (segunda revisión conjunta): `Dockerfile` multi-etapa (`docker.io/library/maven:3.9-eclipse-temurin-21` → `docker.io/library/eclipse-temurin:21-jre`, usuario no root, `MaxRAMPercentage=75` por el `mem_limit: 768m` del compose, `EXPOSE 8000`, `ENTRYPOINT java -jar`) con sus comentarios de por qué `mvn` de la imagen y no `./mvnw`, más `.dockerignore` (sin excluir los prompts de `src/main/resources`) y job `image` del CI (`docker build`, después de `verify`); **segundo agujero del mismo hallazgo, encontrado al verificar**: las credenciales del datasource solo vivían en el perfil `local`, así que el contenedor habría arrancado sin URL de datasource (`Failed to configure a DataSource`) aunque el `Dockerfile` existiera — `spring.datasource.url/username/password` pasan a `application.yml` con los nombres del despliegue (`DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD`, que Boot **no** traduce por sí solo) y `application-local.yml` queda solo con el nivel de log; nombres de imagen cualificados por el registro porque en el equipo `docker` es Podman y la resolución de nombres cortos exige TTY; informe de la segunda revisión conjunta versionado **sin editar**; §7 (nota nueva del contenedor), §8 (árbol), §11.5 (pedido a `kamerinos-infra`: escalera 10/20/25 s, `IA_BOT_TIMEOUT_MS`, variables en su `.env.example`), §12 (dos entradas del checklist) y README ("Contenedor") al día — **validado**: `./mvnw -B verify` verde (127 tests), `docker build` y `docker run` contra el Postgres del `docker-compose.yml` con `/actuator/health` en `UP` y el esquema `ia` migrado por Flyway.
+- 2026-09-26 — fix/h05-turn-log-outcomes — **H-05 + punto 3 de ADR 0013 + el resto de A-08** (segunda revisión conjunta): **ADR 0015** (Aceptada) + migración `V3` (aditiva, sin tocar V1/V2) con `handoff_reason` y `error_code` y un índice `(tenant_id, created_at)` para la consulta del guard; `TurnLogService.Status` pasa a `OK`/`HANDOFF`/`DEADLINE`/`ERROR` con un `ErrorCode` cerrado (`BACKEND_UNAVAILABLE`/`BACKEND_ERROR`/`MODEL_ERROR`) mapeado por origen y sin inspeccionar tipos de Spring AI; `ChatController` registra `HANDOFF` con su motivo en la rama de la política y deja fila `ERROR` (con su código) cuando el fallo ocurre **después** de llamar al modelo, así que `ia.turn_log` es de verdad la fuente de verdad que promete ADR 0010; `TurnCostGuard` cuenta por "¿llamó al modelo?" (`status <> 'HANDOFF'`, con el nombre del estado tomado del enum) y `TurnOutcomeClassificationTest` es el `switch` exhaustivo que fuerza la decisión si aparece un estado nuevo (sustituye a una columna `model_called`); el turno rechazado por el tope sigue sin registrarse y un turno derivado ya no infla los topes de turnos; **límite documentado en el ADR**: los tokens de un turno fallido son desconocidos y quedan en 0 (cota inferior), mientras el conteo de turnos es exacto; tests: `TurnOutcomeClassificationTest` (nuevo), 3 casos de guard contra PostgreSQL (handoff no cuenta, error sí, tenant sin inflar), los tres códigos de error en `ChatControllerTest` (+ `TestBackendExceptions` para poder construir el error "con respuesta" del backend), captor del turno derivado en `ChatControllerHandoffTest`, fila `HANDOFF` real en `ChatApiTurnIntegrationTest` y persistencia de las dos columnas en `UsageLoggingTest`; §4/§12/§13 al día y renumeración del triaje (la 0015 pasa a estar usada; J-06→0016, J-07→0017, J-02→0018, J-10→0019) — verify verde (135 tests).
 
 ---
 

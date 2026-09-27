@@ -38,7 +38,7 @@ class TurnCostGuardTest {
 	private static final String INSERT_TURN = """
 			INSERT INTO ia.turn_log (turn_id, tenant_id, conversation_id, channel, agent, prompt_version, model,
 				tokens_in, tokens_out, latency_ms, status, created_at)
-			VALUES (?, ?, ?, 'WEB_WIDGET', 'CLIENTAS', 'customer-agent.v2', 'deepseek-flash', ?, 0, 100, 'OK', ?)
+			VALUES (?, ?, ?, 'WEB_WIDGET', 'CLIENTAS', 'customer-agent.v2', 'deepseek-flash', ?, 0, 100, ?, ?)
 			""";
 
 	@Autowired
@@ -148,8 +148,59 @@ class TurnCostGuardTest {
 		assertThatCode(() -> this.turnCostGuard.check("kamerinos", "conv-1")).doesNotThrowAnyException();
 	}
 
+	@Test
+	@DisplayName("los turnos derivados por handoff no cuentan para los topes de turnos (ADR 0015)")
+	void handoffTurnsDoNotCount() {
+		// Cinco filas HANDOFF: alcanzarian el tope del tenant (5) y tres de ellas el de la conversacion (3)
+		// si el guard contara por count(*) a secas, que es lo que H-05 vino a corregir.
+		insertTurn("kamerinos", "conv-1", 0, TurnLogService.Status.HANDOFF, Duration.ofMinutes(5));
+		insertTurn("kamerinos", "conv-1", 0, TurnLogService.Status.HANDOFF, Duration.ofMinutes(4));
+		insertTurn("kamerinos", "conv-1", 0, TurnLogService.Status.HANDOFF, Duration.ofMinutes(3));
+		insertTurn("kamerinos", "conv-2", 0, TurnLogService.Status.HANDOFF, Duration.ofMinutes(2));
+		insertTurn("kamerinos", "conv-2", 0, TurnLogService.Status.HANDOFF, Duration.ofMinutes(1));
+
+		assertThatCode(() -> this.turnCostGuard.check("kamerinos", "conv-1")).doesNotThrowAnyException();
+		assertThatCode(() -> this.turnCostGuard.check("kamerinos", "conv-nueva")).doesNotThrowAnyException();
+	}
+
+	@Test
+	@DisplayName("un turno fallido despues del modelo si cuenta: gasto presupuesto (ADR 0015)")
+	void errorTurnsDoCount() {
+		// Los tokens de un turno ERROR se desconocen (0), pero el turno se llamo al modelo y consumio
+		// presupuesto: el tope de turnos lo tiene que ver. Aqui las 3 filas agotan el tope de la conversacion.
+		insertTurn("kamerinos", "conv-1", 0, TurnLogService.Status.ERROR, Duration.ofMinutes(5));
+		insertTurn("kamerinos", "conv-1", 0, TurnLogService.Status.ERROR, Duration.ofMinutes(4));
+		insertTurn("kamerinos", "conv-1", 0, TurnLogService.Status.ERROR, Duration.ofMinutes(3));
+
+		assertThatThrownBy(() -> this.turnCostGuard.check("kamerinos", "conv-1"))
+				.isInstanceOf(CostLimitExceededException.class)
+				.satisfies(exception -> {
+					CostLimitExceededException cost = (CostLimitExceededException) exception;
+					assertThat(cost.scope()).isEqualTo(Scope.CONVERSATION);
+					assertThat(cost.measure()).isEqualTo(Measure.TURNS);
+					assertThat(cost.measured()).isEqualTo(3);
+				});
+	}
+
+	@Test
+	@DisplayName("el tope del tenant tampoco se infla con turnos derivados (ADR 0015)")
+	void handoffTurnsDoNotCountForTheTenantLimit() {
+		for (int i = 0; i < 5; i++) {
+			insertTurn("kamerinos", "conv-" + i, 0, TurnLogService.Status.HANDOFF, Duration.ofMinutes(5));
+		}
+		// Una fila real (OK) deja el tenant en 1: muy por debajo de sus 5 turnos.
+		insertTurn("kamerinos", "conv-real", 100, Duration.ofMinutes(4));
+
+		assertThatCode(() -> this.turnCostGuard.check("kamerinos", "conv-nueva")).doesNotThrowAnyException();
+	}
+
 	private void insertTurn(String tenantId, String conversationId, int tokens, Duration age) {
-		this.jdbcTemplate.update(INSERT_TURN, UUID.randomUUID(), tenantId, conversationId, tokens,
+		insertTurn(tenantId, conversationId, tokens, TurnLogService.Status.OK, age);
+	}
+
+	private void insertTurn(String tenantId, String conversationId, int tokens, TurnLogService.Status status,
+			Duration age) {
+		this.jdbcTemplate.update(INSERT_TURN, UUID.randomUUID(), tenantId, conversationId, tokens, status.name(),
 				OffsetDateTime.ofInstant(Instant.now().minus(age), ZoneOffset.UTC));
 	}
 }

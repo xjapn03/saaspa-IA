@@ -42,6 +42,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.juanp.saaspa.ia.agent.customer.CustomerAgent;
 import com.juanp.saaspa.ia.agent.handoff.HandoffConfig;
 import com.juanp.saaspa.ia.backend.BackendUnavailableException;
+import com.juanp.saaspa.ia.backend.TestBackendExceptions;
 import com.juanp.saaspa.ia.config.LlmClientConfig;
 import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.SecurityConfig;
@@ -274,7 +275,7 @@ class ChatControllerTest {
 	}
 
 	@Test
-	@DisplayName("un backend caido se traduce a 502 con ProblemDetail")
+	@DisplayName("un backend caido se traduce a 502 con ProblemDetail y deja fila ERROR (ADR 0015)")
 	void mapsBackendFailureToBadGateway() throws Exception {
 		willThrow(new BackendUnavailableException("/api/internal/v1/services", new IOException("sin conexion")))
 				.given(this.customerAgent)
@@ -287,6 +288,48 @@ class ChatControllerTest {
 				.andExpect(status().isBadGateway())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 				.andExpect(jsonPath("$.title").value("Sistema de agenda no disponible"));
+
+		// H-05/ADR 0015: el modelo ya se llamo, asi que el turno gasto presupuesto y tiene que dejar
+		// fila con su codigo de error; si no, el tope de coste mediria menos de lo que cree.
+		TurnLogService.TurnLog row = capturedTurnLog();
+		assertThat(row.status()).isEqualTo(TurnLogService.Status.ERROR);
+		assertThat(row.errorCode()).isEqualTo("BACKEND_UNAVAILABLE");
+		assertThat(row.handoffReason()).isNull();
+		assertThat(row.tokensIn()).isZero();
+		assertThat(row.tokensOut()).isZero();
+		assertThat(row.model()).isNull();
+	}
+
+	@Test
+	@DisplayName("un backend que responde con error deja fila ERROR con el codigo BACKEND_ERROR (ADR 0015)")
+	void recordsBackendErrorCode() throws Exception {
+		willThrow(TestBackendExceptions.errorResponse()).given(this.customerAgent)
+				.reply(any(TurnToken.class), any(String.class));
+
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("kamerinos", "CLIENTAS", "Que servicios tienen?")))
+				.andExpect(status().isBadGateway());
+
+		assertThat(capturedTurnLog().errorCode()).isEqualTo("BACKEND_ERROR");
+	}
+
+	@Test
+	@DisplayName("un fallo del camino del modelo deja fila ERROR con el codigo MODEL_ERROR (ADR 0015)")
+	void recordsModelErrorCode() throws Exception {
+		willThrow(new IllegalStateException("el proveedor fallo tras los reintentos")).given(this.customerAgent)
+				.reply(any(TurnToken.class), any(String.class));
+
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("kamerinos", "CLIENTAS", "Que servicios tienen?")))
+				.andExpect(status().isInternalServerError());
+
+		TurnLogService.TurnLog row = capturedTurnLog();
+		assertThat(row.status()).isEqualTo(TurnLogService.Status.ERROR);
+		assertThat(row.errorCode()).isEqualTo("MODEL_ERROR");
 	}
 
 	@Test
@@ -308,13 +351,12 @@ class ChatControllerTest {
 				.andExpect(jsonPath("$.turnId").value(TURN_ID.toString()));
 
 		// A-08/ADR 0014: el turno cortado por el deadline deja fila, con estado DEADLINE.
-		ArgumentCaptor<TurnLogService.TurnLog> turnLog = ArgumentCaptor.forClass(TurnLogService.TurnLog.class);
-		then(this.turnLogService).should().record(turnLog.capture());
-		assertThat(turnLog.getValue().turnId()).isEqualTo(TURN_ID);
-		assertThat(turnLog.getValue().status()).isEqualTo(TurnLogService.Status.DEADLINE);
-		assertThat(turnLog.getValue().tokensIn()).isZero();
-		assertThat(turnLog.getValue().tokensOut()).isZero();
-		assertThat(turnLog.getValue().model()).isNull();
+		TurnLogService.TurnLog row = capturedTurnLog();
+		assertThat(row.turnId()).isEqualTo(TURN_ID);
+		assertThat(row.status()).isEqualTo(TurnLogService.Status.DEADLINE);
+		assertThat(row.tokensIn()).isZero();
+		assertThat(row.tokensOut()).isZero();
+		assertThat(row.model()).isNull();
 	}
 
 	@Test
@@ -342,6 +384,15 @@ class ChatControllerTest {
 			Thread.sleep(20);
 		}
 		assertThat(interrupted).isTrue();
+	}
+
+	/**
+	 * @return la unica fila que el turno registro en {@code ia.turn_log}
+	 */
+	private TurnLogService.TurnLog capturedTurnLog() {
+		ArgumentCaptor<TurnLogService.TurnLog> turnLog = ArgumentCaptor.forClass(TurnLogService.TurnLog.class);
+		then(this.turnLogService).should().record(turnLog.capture());
+		return turnLog.getValue();
 	}
 
 	private static String bearer(Map<String, Object> claims) {

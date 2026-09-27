@@ -52,11 +52,12 @@ class UsageLoggingTest {
 		UUID turnId = UUID.randomUUID();
 
 		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
-				null, null, "customer-agent.v1", "deepseek-flash", 1200, 80, 1500, TurnLogService.Status.OK));
+				null, null, "customer-agent.v1", "deepseek-flash", 1200, 80, 1500, TurnLogService.Status.OK, null,
+				null));
 
 		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
 				SELECT tenant_id, conversation_id, channel, agent, user_id, role, prompt_version, model,
-				       tokens_in, tokens_out, latency_ms, status
+				       tokens_in, tokens_out, latency_ms, status, handoff_reason, error_code
 				FROM ia.turn_log WHERE turn_id = ?
 				""", turnId);
 
@@ -67,6 +68,9 @@ class UsageLoggingTest {
 				.containsEntry("latency_ms", 1500).containsEntry("status", "OK");
 		assertThat(row.get("user_id")).isNull();
 		assertThat(row.get("role")).isNull();
+		// ADR 0015: el motivo del handoff y el codigo de error solo se llenan en su propio desenlace.
+		assertThat(row.get("handoff_reason")).isNull();
+		assertThat(row.get("error_code")).isNull();
 	}
 
 	@Test
@@ -75,7 +79,7 @@ class UsageLoggingTest {
 		UUID turnId = UUID.randomUUID();
 
 		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
-				null, null, null, null, 0, 0, 20_000, TurnLogService.Status.DEADLINE));
+				null, null, null, null, 0, 0, 20_000, TurnLogService.Status.DEADLINE, null, null));
 
 		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
 				SELECT status, latency_ms, prompt_version, model
@@ -85,6 +89,43 @@ class UsageLoggingTest {
 		assertThat(row).containsEntry("status", "DEADLINE").containsEntry("latency_ms", 20_000);
 		assertThat(row.get("prompt_version")).isNull();
 		assertThat(row.get("model")).isNull();
+	}
+
+	@Test
+	@DisplayName("registra el turno derivado con su estado y su motivo (ADR 0013 punto 3 / ADR 0015)")
+	void recordsHandoffTurns() {
+		UUID turnId = UUID.randomUUID();
+
+		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
+				null, null, null, null, 0, 0, 12, TurnLogService.Status.HANDOFF, "HEALTH_TOPIC", null));
+
+		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
+				SELECT status, handoff_reason, error_code, tokens_in, tokens_out, model
+				FROM ia.turn_log WHERE turn_id = ?
+				""", turnId);
+
+		assertThat(row).containsEntry("status", "HANDOFF").containsEntry("handoff_reason", "HEALTH_TOPIC")
+				.containsEntry("tokens_in", 0).containsEntry("tokens_out", 0);
+		assertThat(row.get("error_code")).isNull();
+		assertThat(row.get("model")).isNull();
+	}
+
+	@Test
+	@DisplayName("registra el turno fallido despues del modelo con su codigo de error (H-05 / ADR 0015)")
+	void recordsErrorTurns() {
+		UUID turnId = UUID.randomUUID();
+
+		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
+				null, null, null, null, 0, 0, 900, TurnLogService.Status.ERROR, null, "BACKEND_UNAVAILABLE"));
+
+		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
+				SELECT status, error_code, handoff_reason, tokens_in, tokens_out
+				FROM ia.turn_log WHERE turn_id = ?
+				""", turnId);
+
+		assertThat(row).containsEntry("status", "ERROR").containsEntry("error_code", "BACKEND_UNAVAILABLE")
+				.containsEntry("tokens_in", 0).containsEntry("tokens_out", 0);
+		assertThat(row.get("handoff_reason")).isNull();
 	}
 
 	@Test
@@ -133,9 +174,11 @@ class UsageLoggingTest {
 	@DisplayName("aisla los registros por tenant")
 	void isolatesTenants() {
 		this.turnLogService.record(new TurnLogService.TurnLog(UUID.randomUUID(), "kamerinos", "conv-1", "WEB_WIDGET",
-				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 10, 5, 100, TurnLogService.Status.OK));
+				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 10, 5, 100, TurnLogService.Status.OK,
+				null, null));
 		this.turnLogService.record(new TurnLogService.TurnLog(UUID.randomUUID(), "otro-tenant", "conv-9", "WEB_WIDGET",
-				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 20, 6, 200, TurnLogService.Status.OK));
+				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 20, 6, 200, TurnLogService.Status.OK,
+				null, null));
 
 		assertThat(countTurns("kamerinos")).isEqualTo(1);
 		assertThat(countTurns("otro-tenant")).isEqualTo(1);
@@ -150,7 +193,7 @@ class UsageLoggingTest {
 
 		assertThatCode(() -> new TurnLogService(broken).record(new TurnLogService.TurnLog(UUID.randomUUID(),
 				"kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS", null, null, "customer-agent.v1", "model", 1, 1, 1,
-				TurnLogService.Status.OK)))
+				TurnLogService.Status.OK, null, null)))
 				.doesNotThrowAnyException();
 		assertThatCode(() -> new ToolCallLogger(broken, JsonMapper.builder().build()).record(UUID.randomUUID(),
 				"kamerinos", "listarServicios", ToolCallLogger.ToolCallStatus.OK, 1, "{}", "{}"))

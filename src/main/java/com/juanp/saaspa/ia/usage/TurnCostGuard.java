@@ -18,6 +18,11 @@ import com.juanp.saaspa.ia.usage.CostLimitExceededException.Scope;
  * turnos ya registrados (tokens de entrada + salida), sin contador en memoria, de modo que un reinicio del
  * servicio no borra el consumo acumulado y varias instancias comparten el mismo limite.
  *
+ * <p><strong>Base del computo (ADR 0015):</strong> se cuenta todo desenlace que haya llamado al modelo. Un
+ * turno derivado por handoff no lo hace y no entra; uno que fallo despues de llamarlo ({@code ERROR}) si
+ * entra, porque gasto presupuesto. Sus tokens se desconocen y se registran en 0, asi que las medidas de
+ * tokens son una <em>cota inferior</em> y las de turnos son exactas.
+ *
  * <p>Se evalua **antes** de llamar al modelo y solo en la rama que llama al modelo: un turno resuelto por
  * {@code HandoffPolicy} no gasta tokens y por tanto no debe cortarse por presupuesto (R10 no depende del
  * coste).
@@ -28,6 +33,11 @@ public class TurnCostGuard {
 	 * Consumo del tenant y de la conversacion en la ventana, en una sola consulta. Los dos primeros
 	 * parametros son el id de conversacion (dos veces, para el filtro por fila) y despues el tenant y el
 	 * inicio de la ventana.
+	 *
+	 * <p>El filtro {@code status <> 'HANDOFF'} es la base del computo (ADR 0015): se cuenta todo desenlace
+	 * que <em>llamo al modelo</em>, y un turno derivado no lo hace. El nombre del estado se toma del enum
+	 * para que un renombrado no pueda dejar el filtro mintiendo en silencio; la clasificacion completa la
+	 * fija {@code TurnOutcomeClassificationTest}, con un {@code switch} exhaustivo.
 	 */
 	private static final String USAGE_IN_WINDOW = """
 			SELECT count(*) AS tenant_turns,
@@ -35,8 +45,8 @@ public class TurnCostGuard {
 			       count(*) FILTER (WHERE conversation_id = ?) AS conversation_turns,
 			       COALESCE(sum(tokens_in + tokens_out) FILTER (WHERE conversation_id = ?), 0) AS conversation_tokens
 			FROM ia.turn_log
-			WHERE tenant_id = ? AND created_at >= ?
-			""";
+			WHERE tenant_id = ? AND created_at >= ? AND status <> '%s'
+			""".formatted(TurnLogService.Status.HANDOFF.name());
 
 	private final JdbcTemplate jdbcTemplate;
 
