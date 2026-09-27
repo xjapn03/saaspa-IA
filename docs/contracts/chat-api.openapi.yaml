@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.6.0
+  version: 0.6.1
   description: >-
-    Contrato IMPLEMENTADO v0.6.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    Contrato IMPLEMENTADO v0.6.1. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
     (informe: docs/contracts/f1-e2e-validation.md; la validacion previa del borrador esta en
     docs/contracts/t1.0-backend-validation.md). NestJS es el unico punto de entrada de canales:
     resuelve tenant, identidad y rol, y llama a este servicio.
@@ -115,10 +115,11 @@ components:
         iss por defecto saaspa-backend, aud por defecto saaspa-ia, TTL por defecto 300 s y
         jti = turnId. Este servicio solo verifica con la clave publica y acepta dos claves por kid
         para rotar sin cortar el servicio; el backend todavia tiene una unica ranura de kid.
-        Claims: jti, tenantId, conversationId, channel, agent, userId?, role? y **clientIp?**
-        (H-04, ADR 0020: la IP resuelta por el backend con su proxy de confianza, que es la clave del
-        tope de coste por origen). `clientIp` es **opcional mientras saaspa-backend no lo emita**: sin
-        el, el turno se registra sin origen y no se le aplica ese tope (se avisa una vez en el log).
+        Claims: jti, tenantId, conversationId, channel, agent, userId?, role? y **clientIp** (H-04, ADR 0020:
+        la IP resuelta por el backend con su proxy de confianza —la misma con la que agrupa su Throttler—, que
+        es la clave del tope de coste por origen). El backend **ya lo emite** (su PR #84, commit a08985e); sigue
+        siendo un claim opcional del token, asi que un turn token sin el es valido y su turno se registra sin
+        origen (sin tope por origen, con aviso en el log y `origin_hash IS NULL` en la tabla).
   responses:
     Problem:
       description: Problem Details (RFC 9457)
