@@ -23,8 +23,8 @@ public class TurnLogService {
 
 	private static final String INSERT_TURN = """
 			INSERT INTO ia.turn_log (turn_id, tenant_id, conversation_id, channel, agent, user_id, role,
-				prompt_version, model, tokens_in, tokens_out, latency_ms, status)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				prompt_version, model, tokens_in, tokens_out, latency_ms, status, handoff_reason, error_code)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			""";
 
 	private final JdbcTemplate jdbcTemplate;
@@ -42,7 +42,8 @@ public class TurnLogService {
 		try {
 			this.jdbcTemplate.update(INSERT_TURN, turn.turnId(), turn.tenantId(), turn.conversationId(),
 					turn.channel(), turn.agent(), turn.userId(), turn.role(), turn.promptVersion(), turn.model(),
-					turn.tokensIn(), turn.tokensOut(), turn.latencyMs(), turn.status().name());
+					turn.tokensIn(), turn.tokensOut(), turn.latencyMs(), turn.status().name(), turn.handoffReason(),
+					turn.errorCode());
 		}
 		catch (DataAccessException ex) {
 			log.error("No se pudo registrar el turno en ia.turn_log: {}", ex.getClass().getSimpleName());
@@ -50,19 +51,54 @@ public class TurnLogService {
 	}
 
 	/**
-	 * Estado del turno registrado (ADR 0014).
+	 * Estado del turno registrado (ADR 0014 y ADR 0015).
 	 *
-	 * <p>{@code OK} si el turno se atendio; {@code DEADLINE} si lo corto el deadline del turno
-	 * ({@code saaspa.llm.turn-deadline}) antes de que el modelo respondiera. Antes de ADR 0014 un turno
-	 * cortado por el deadline no dejaba fila (A-08).
+	 * <p>{@code OK} si el turno se atendio; {@code HANDOFF} si lo derivo la politica de handoff (no se
+	 * llamo al modelo); {@code DEADLINE} si lo corto el deadline del turno
+	 * ({@code saaspa.llm.turn-deadline}) antes de que el modelo respondiera; {@code ERROR} si el modelo
+	 * llego a llamarse y el turno fallo despues (backend, proveedor o fallo inesperado).
+	 *
+	 * <p><strong>Base del computo de coste (ADR 0015):</strong> {@link TurnCostGuard} cuenta los
+	 * desenlaces que <em>llamaron al modelo</em>, que son todos menos {@code HANDOFF}. Anadir un estado
+	 * nuevo obliga a decidir si gasta presupuesto: {@code TurnOutcomeClassificationTest} tiene un
+	 * {@code switch} exhaustivo que deja de compilar hasta que se decida.
 	 */
 	public enum Status {
 
-		/** El turno se atendio (con respuesta del modelo o con handoff en codigo). */
+		/** El turno se atendio con una respuesta del modelo. */
 		OK,
 
+		/** El turno se derivo a una persona: no se llamo al modelo y no se gastaron tokens. */
+		HANDOFF,
+
 		/** El turno se corto al superar {@code saaspa.llm.turn-deadline}. */
-		DEADLINE
+		DEADLINE,
+
+		/** El turno llamo al modelo y fallo despues: los tokens gastados se desconocen (se registran en 0). */
+		ERROR
+
+	}
+
+	/**
+	 * Tipo de fallo de un turno con {@code status = ERROR} (ADR 0015).
+	 *
+	 * <p>Es un conjunto <strong>cerrado</strong> de codigos mapeados en codigo a partir de la excepcion,
+	 * nunca su mensaje ni el nombre crudo de la clase: asi el registro es estable y consultable y no
+	 * filtra detalles internos del proveedor (R8).
+	 */
+	public enum ErrorCode {
+
+		/** El backend de agenda no respondio (timeout, conexion rechazada o error de red). */
+		BACKEND_UNAVAILABLE,
+
+		/** El backend de agenda respondio, pero con un error. */
+		BACKEND_ERROR,
+
+		/**
+		 * El fallo vino del camino del modelo (proveedor tras los reintentos, argumentos de herramienta
+		 * o cualquier otro fallo dentro de la llamada al agente).
+		 */
+		MODEL_ERROR
 
 	}
 
@@ -82,9 +118,13 @@ public class TurnLogService {
 	 * @param tokensOut tokens de salida
 	 * @param latencyMs latencia del turno en milisegundos
 	 * @param status estado del turno ({@link Status})
+	 * @param handoffReason motivo del handoff cuando {@code status = HANDOFF}
+	 * ({@code HEALTH_TOPIC} | {@code COMPLAINT} | {@code EXPLICIT_REQUEST}); {@code null} en el resto
+	 * @param errorCode tipo de fallo ({@link ErrorCode}) cuando {@code status = ERROR}; {@code null} en el
+	 * resto
 	 */
 	public record TurnLog(UUID turnId, String tenantId, String conversationId, String channel, String agent,
 			String userId, String role, String promptVersion, String model, int tokensIn, int tokensOut,
-			long latencyMs, Status status) {
+			long latencyMs, Status status, String handoffReason, String errorCode) {
 	}
 }
