@@ -1,6 +1,7 @@
 package com.juanp.saaspa.ia.api;
 
 import java.util.List;
+import java.util.Locale;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.juanp.saaspa.ia.backend.BackendException;
 import com.juanp.saaspa.ia.backend.BackendUnavailableException;
+import com.juanp.saaspa.ia.usage.CostLimitExceededException;
 
 /**
  * Errores de la API con {@link ProblemDetail} (RFC 9457), el formato del contrato de chat.
@@ -75,6 +77,20 @@ public class ApiExceptionHandler {
 			// ADR 0014: el turnId correlaciona este 504 con la fila DEADLINE de ia.turn_log y con NestJS.
 			problem.setProperty("turnId", exception.turnId());
 		}
+		return problem;
+	}
+
+	@ExceptionHandler(CostLimitExceededException.class)
+	public ProblemDetail costLimitExceeded(CostLimitExceededException exception) {
+		log.warn("Turno rechazado por el tope de coste: {} {}", exception.scope(), exception.measure());
+		ProblemDetail problem = problem(HttpStatus.TOO_MANY_REQUESTS, "Limite de uso alcanzado",
+				"Se alcanzo el limite de uso de este asistente; intenta de nuevo mas tarde");
+		// ADR 0010: el ambito y la medida no son PII y ayudan a diagnosticar (y a calibrar en la Fase 5).
+		problem.setProperty("scope", exception.scope().name().toLowerCase(Locale.ROOT));
+		problem.setProperty("measure", exception.measure().name().toLowerCase(Locale.ROOT));
+		problem.setProperty("measured", exception.measured());
+		problem.setProperty("limit", exception.limit());
+		problem.setProperty("window", exception.window().toString());
 		return problem;
 	}
 
