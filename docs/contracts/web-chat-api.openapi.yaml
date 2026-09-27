@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: saaspa-backend - Web Chat API (Frontend -> NestJS)
-  version: 0.2.0
+  version: 0.3.0
   description: >-
-    Contrato IMPLEMENTADO v0.2.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    Contrato IMPLEMENTADO v0.3.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
     (informe: docs/contracts/f1-e2e-validation.md; la validacion del borrador esta en
     docs/contracts/t1.0-backend-validation.md). Implementado en src/modules/chat/chat.controller.ts
     y src/modules/chat/chat.service.ts (POST /api/chat, @Public(), 200).
@@ -14,7 +14,8 @@ info:
     (whitelist + forbidNonWhitelisted) rechaza con 400 cualquier campo desconocido.
     Anti-abuso implementado: @Throttle de 20 req/60 s por IP; mensaje de mas de 1000 caracteres ->
     413; tope de 30 mensajes por hora por sesion anonima -> 429 (el contador vive en la base de datos,
-    no en memoria); sin PII en logs (solo turnId, canal y conversacion).
+    no en memoria); y el tope de coste del asistente (ADR 0010/0020 de saaspa-IA), que H-04 ya preserva
+    como 429 real en vez de 502. Sin PII en logs (solo turnId, canal y conversacion).
     Sesion: la cookie kamerinos_chat_session (httpOnly, sameSite=lax, 7 dias, secure en produccion)
     identifica la sesion anonima; se guarda su hash SHA-256 y el conversationId es aleatorio de
     16 bytes en hex (32 caracteres) cuando el cliente no lo envia. Un conversationId que no pertenece
@@ -22,6 +23,8 @@ info:
     Handoff (A-10a): cuando la conversacion ya fue derivada, NestJS responde su texto canonico
     (HANDOFF_ACTIVE_MESSAGE) con handoff.requested=true SIN llamar a saaspa-IA, asi que el bot no
     puede retomar la conversacion.
+    v0.3.0: el 429 incluye el tope de coste del asistente (scope tenant|conversation|origin, H-04 ya
+    preserva ese 429) y el 504 cita el timeout real del backend (IA_BOT_TIMEOUT_MS = 25000 ms).
 servers:
   - url: https://kamerinos.sandrapinzonsaludybelleza.com.co
 paths:
@@ -61,14 +64,17 @@ paths:
           description: Mensaje demasiado largo (mas de 1000 caracteres; MAX_MESSAGE_LENGTH)
         '429':
           description: >-
-            Limite alcanzado: 20 peticiones por minuto y por IP (Throttler) o tope de 30 mensajes por
-            hora en la sesion anonima
+            Limite alcanzado: 20 peticiones por minuto y por IP (Throttler); tope de 30 mensajes por hora en
+            la sesion anonima; o **tope de coste del asistente** (ADR 0010 y ADR 0020 de saaspa-IA: turnos o
+            tokens por ventana, por tenant, por conversacion o por origen del turno, con `scope`
+            tenant|conversation|origin y `measure` turns|tokens). El 429 del asistente se preserva tal cual
+            hacia el widget (H-04): la clienta puede esperar y reintentar.
         '502':
           description: >-
             saaspa-IA devolvio un error no clasificado (el backend lo mapea a Bad Gateway) o no esta
             disponible
         '504':
-          description: saaspa-IA no respondio dentro de IA_BOT_TIMEOUT_MS (20000 ms por defecto)
+          description: saaspa-IA no respondio dentro de IA_BOT_TIMEOUT_MS (25000 ms por defecto)
 components:
   securitySchemes:
     sessionCookie:

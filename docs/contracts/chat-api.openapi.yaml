@@ -1,18 +1,19 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.5.0
+  version: 0.6.0
   description: >-
-    Contrato IMPLEMENTADO v0.5.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    Contrato IMPLEMENTADO v0.6.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
     (informe: docs/contracts/f1-e2e-validation.md; la validacion previa del borrador esta en
     docs/contracts/t1.0-backend-validation.md). NestJS es el unico punto de entrada de canales:
     resuelve tenant, identidad y rol, y llama a este servicio.
     Estado en el backend: IMPLEMENTADO. El emisor del turn token es src/modules/internal/turn-token.service.ts
     (ES256/P-256, kid en la cabecera, TTL por defecto 300 s, jti = turnId) y el cliente HTTP es
     src/modules/chat/ia-bot.client.ts: POST {IA_BOT_URL}/api/v1/chat con X-Internal-Api-Key = IA_BOT_API_KEY
-    y Authorization: Bearer <turn token>, timeout IA_BOT_TIMEOUT_MS (20000 ms por defecto).
-    Mapeo de errores del backend: 400 -> 400, 501 -> 501, timeout -> 504 y cualquier otra respuesta
-    de este servicio (incluidos nuestros 401/403/502) -> 502.
+    y Authorization: Bearer <turn token>, timeout IA_BOT_TIMEOUT_MS (25000 ms por defecto).
+    Mapeo de errores del backend: 400 -> 400, 429 -> 429 (el tope de coste de este servicio llega tal cual al
+    widget, H-04 resuelto en saaspa-backend), 501 -> 501, timeout -> 504 y cualquier otra respuesta de este
+    servicio (incluidos nuestros 401/403/502) -> 502.
     Autenticacion: cabecera de servicio X-Internal-Api-Key con el valor de IA_BOT_API_KEY
     (NestJS -> IA; clave distinta de INTERNAL_API_KEY, que es IA -> NestJS) mas el turn token
     firmado en Authorization: Bearer.
@@ -28,6 +29,9 @@ info:
     (WEB_WIDGET/WEB_LOGGED en el chat web anonimo y logueado, CLIENTAS como agente en ambos). El
     backend delega en este servicio el estado del handoff por turno y guarda el estado de la
     conversacion por su lado (decision A-10a).
+    v0.6.0: el backend preserva el 429 de este servicio hacia el widget (H-04, ya implementado alli) y el
+    tope de coste gana el ambito `origin` con el claim opcional `clientIp` (ADR 0020 de este repo); se
+    corrige el timeout real del backend (25000 ms).
 servers:
   - url: http://localhost:8000
 paths:
@@ -59,11 +63,11 @@ paths:
           $ref: '#/components/responses/Problem'
         '429':
           description: >-
-            Tope de coste superado (ADR 0010): turnos o tokens por ventana, por tenant o por conversacion,
-            medidos sobre `ia.turn_log` (sin contador en memoria). El `ProblemDetail` incluye `scope`
-            (`tenant`|`conversation`), `measure` (`turns`|`tokens`), `measured`, `limit` y `window` (ISO-8601).
-            Nota: el backend mapea hoy cualquier respuesta distinta de 400/501 a **502** (J-07), asi que el
-            widget no vera el 429 hasta que se acuerde ese mapeo.
+            Tope de coste superado (ADR 0010 y ADR 0020): turnos o tokens por ventana, por tenant, por
+            conversacion o por origen del turno, medidos sobre `ia.turn_log` (sin contador en memoria). El
+            `ProblemDetail` incluye `scope` (`tenant`|`conversation`|`origin`), `measure` (`turns`|`tokens`),
+            `measured`, `limit` y `window` (ISO-8601). El backend ya preserva este 429 hacia el widget
+            (H-04 resuelto en saaspa-backend; antes cualquier respuesta distinta de 400/501 se mapeaba a 502).
           content:
             application/problem+json:
               schema:
@@ -111,6 +115,10 @@ components:
         iss por defecto saaspa-backend, aud por defecto saaspa-ia, TTL por defecto 300 s y
         jti = turnId. Este servicio solo verifica con la clave publica y acepta dos claves por kid
         para rotar sin cortar el servicio; el backend todavia tiene una unica ranura de kid.
+        Claims: jti, tenantId, conversationId, channel, agent, userId?, role? y **clientIp?**
+        (H-04, ADR 0020: la IP resuelta por el backend con su proxy de confianza, que es la clave del
+        tope de coste por origen). `clientIp` es **opcional mientras saaspa-backend no lo emita**: sin
+        el, el turno se registra sin origen y no se le aplica ese tope (se avisa una vez en el log).
   responses:
     Problem:
       description: Problem Details (RFC 9457)
