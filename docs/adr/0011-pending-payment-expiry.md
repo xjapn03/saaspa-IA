@@ -1,7 +1,10 @@
 # ADR 0011: Expiración de citas en PENDIENTE_PAGO y tope de reservas pendientes
 
-- **Estado:** Propuesta (pendiente de aceptación; no implementada)
+- **Estado:** Aceptada (2026-09-26)
 - **Fecha:** 2026-09-26
+- **Implementación:** hecha en `saaspa-backend` (PR #77, fusionado el 2026-09-27 01:09 UTC). De este lado ya
+  están el contrato (el enum de `Booking.status` expone `EXPIRADA`) y el caso
+  `B01-franja-liberada-por-expiracion` del dataset `eval/`.
 - **Origen:** el expiro de `PENDIENTE_PAGO` del informe conjunto (§5 punto 1 y §9 bloqueante 2), etiquetado
   **B-01** en el triaje (`docs/reviews/2026-09-26-joint-review-triage.md`).
 
@@ -20,30 +23,38 @@ backend calcule y devuelva.
 1. **La implementación es 100 % de `saaspa-backend`:** el trabajo que expira las citas sin pagar, el tope de
    reservas pendientes por usuario y su métrica. Este repo **no** implementa la expiración, no la simula y no
    la infiere; el agente se limita a leer el estado.
-2. **Lo que sí queda de este lado es el contrato** (`docs/contracts/internal-api.openapi.yaml`): qué expone una
-   cita expirada.
-   - **Propuesta:** añadir `EXPIRADA` al enum de `Booking.status` (hoy `PENDIENTE_PAGO`, `CONFIRMADA`,
-     `CANCELADA`, `COMPLETADA`, `NO_ASISTIO`), para que el agente pueda explicar que la franja se liberó por
-     falta de pago sin confundirlo con una cancelación de la clienta.
-   - **Alternativa descartada (por ahora):** representar la expiración como `CANCELADA` con un motivo. Se
-     descarta porque mezcla dos hechos distintos —la clienta canceló / el sistema expiró— justo en el dato que
-     la Fase 2 necesita para un reintento de pago.
+2. **Lo que queda de este lado es el contrato** (`docs/contracts/internal-api.openapi.yaml`), y **ya está
+   hecho**: `Booking.status` expone `EXPIRADA` junto a `PENDIENTE_PAGO`, `CONFIRMADA`, `CANCELADA`,
+   `COMPLETADA` y `NO_ASISTIO`, para que el agente pueda explicar que la franja se liberó por falta de pago
+   sin confundirlo con una cancelación de la clienta.
+   - **Alternativa descartada:** representar la expiración como `CANCELADA` con un motivo. Se descarta porque
+     mezcla dos hechos distintos —la clienta canceló / el sistema expiró— justo en el dato que la Fase 2
+     necesita para un reintento de pago.
    - La **disponibilidad no necesita campo nuevo**: una franja liberada por expiración es una franja libre más
      y `GET /api/internal/v1/availability` ya la devuelve.
-3. **Dataset de evaluación** (R15) en la misma pasada: un caso nuevo en `eval/` (por ejemplo
-   `F2-franja-liberada-por-expiracion`) en el que la clienta pregunta por una franja que acaba de liberarse por
-   expiración. El agente debe (i) no afirmar que la cita anterior sigue en pie, (ii) ofrecer la hora que
-   devuelve la herramienta y no la del mensaje, y (iii) no prometer que el pago anterior sigue vigente. Si el
-   backend todavía no expone el estado, el caso se marca como brecha (mismo patrón que A-14).
+3. **Lo que implementó el backend (PR #77)** y que este contrato asume: ventana de pago configurable
+   (`BOOKING_PAYMENT_TTL_MINUTES`, 30 min por defecto); barrido cada 5 min más una pasada al arrancar que pasa
+   las citas vencidas a `EXPIRADA` (condicional e idempotente, libera el lock de Redis y borra el evento de
+   Calendar); el mismo filtro de ocupación para disponibilidad y solapes, así que la franja se libera aunque el
+   barrido no haya corrido; tope de `BOOKING_MAX_PENDING_PER_USER` (2 por defecto) con **409** en
+   `POST /api/bookings`; un pago tardío queda `APROBADO` y necesita decisión manual; `confirm` y `reschedule`
+   rechazan una cita `EXPIRADA`.
+4. **Dataset de evaluación** (R15), ya implementado: el caso **`B01-franja-liberada-por-expiracion`** (real, no
+   brecha). La clienta dice que no alcanzó a pagar y pregunta si la hora sigue libre; el caso exige que la
+   respuesta traiga una hora concreta (`HH:mm`, la que devuelve la herramienta) y que no afirme que la cita o
+   el pago anteriores siguen vigentes. Depende de la evaluación con LLM real (el modelo guionizado del build no
+   produce la hora) y de que el backend siga exponiendo `EXPIRADA`.
 
 ## Consecuencias
 
 - **Positivas:** la agenda deja de poder bloquearse gratis desde una conversación; el agente podrá explicar el
   estado real; el contrato queda definido **antes** de que exista la herramienta de escritura.
-- **Negativas:** mientras el backend no implemente la expiración, este ADR no cambia nada en runtime y solo
-  evita documentar un contrato que no existe; el caso de `eval/` no puede pasar hasta entonces.
-- **Pendiente de la persona:** aceptar el ADR. El trabajo de este repo es pequeño (contrato + un caso del
-  dataset) y no bloquea la ola 1 más allá de la parte de contrato de `bookings`.
+- **Negativas:** el caso de `eval/` depende de la evaluación con LLM real (no la ejercita el modelo guionizado
+  del build) y de que el backend siga exponiendo `EXPIRADA`: si dejara de hacerlo, el caso volvería a
+  marcarse como brecha, con el patrón de A-14.
+- **Estado:** aceptada. La parte del backend está implementada (PR #77) y la de este repo (contrato + caso del
+  dataset `B01-franja-liberada-por-expiracion`) también; no queda nada pendiente salvo la verificación con el
+  LLM real, que es de la Fase 5.
 
 ## Referencias
 
