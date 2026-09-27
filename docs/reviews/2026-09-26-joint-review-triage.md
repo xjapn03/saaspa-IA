@@ -13,6 +13,10 @@
   proponen una rama `docs/adr-00NN-…` (solo el ADR) y la rama de implementación viene **después** de que el
   ADR esté aceptado. Los números 0010 en adelante están **reservados por este triaje**; el ADR se redacta al
   abrir cada trabajo.
+- **Reajuste de numeración (2026-09-26):** la ADR **0015** se usó para los desenlaces del turno y la base del
+  cómputo de coste (**H-05** de la segunda revisión conjunta, rama `fix/h05-turn-log-outcomes`), así que las
+  reservas de este triaje corren un número: **J-06 → 0016**, **J-07 → 0017**, **J-02 → 0018** y
+  **J-10 → 0019**. Las filas de abajo ya llevan el número nuevo.
 
 ## 1. Cómo leer este triaje
 
@@ -46,11 +50,11 @@
 | J-09 | Baja-media | 1 | **ADR 0012** (misma decisión: ámbitos, TTL de escritura e `Idempotency-Key` atada a `jti` + operación) | Igual que J-08 |
 | J-05 | Media-alta | 1 | **ADR 0013** — handoff con destino, reversible y auditable | **requiere coordinación con saaspa-backend, no fusionar de un solo lado** |
 | J-01 | Alta | 2 | Sin ADR (operativo) | `kamerinos-infra` (`ia-bot`, variables, health check obligatorio) + backend (validar la config al arrancar) |
-| J-02 | Alta | 2 | **ADR 0017** — dónde vive el widget y qué significa "Fase 1 validada" | `saaspa-frontend` (tercer repo): aquí solo el ADR y el estado en README/AGENTS.md |
+| J-02 | Alta | 2 | **ADR 0018** — dónde vive el widget y qué significa "Fase 1 validada" | `saaspa-frontend` (tercer repo): aquí solo el ADR y el estado en README/AGENTS.md |
 | J-04 | Alta | 3 | **ADR 0014** — escalera de plazos, correlación y estado de los turnos fallidos | **requiere coordinación con saaspa-backend, no fusionar de un solo lado** (la mitad de los puntos sí es nuestra) |
-| J-06 | Media | 3 | **ADR 0015** — verificación del acople y campos muertos (`locale`/`timezone`/`now`) | `feature/actuator-info-tenant-and-timezone` (feature, nuestro lado); la comprobación en el otro lado y la decisión sobre los campos son coordinadas |
-| J-07 | Media | 3 | **ADR 0016** — contrato de error end-to-end y texto de cara a la clienta | **requiere coordinación con saaspa-backend, no fusionar de un solo lado** |
-| J-10 | Baja-media | 4 | **ADR 0018** — identificador de conversación/sesión emitido por el servidor y retención | `docs/adr-0018-conversation-id-and-retention` (docs) + `fix/conversation-id-format-validation` (fix) y `feature/memory-retention-and-purge` (feature, Fase 5); el vínculo sesión↔conversación es de backend |
+| J-06 | Media | 3 | **ADR 0016** — verificación del acople y campos muertos (`locale`/`timezone`/`now`) | `feature/actuator-info-tenant-and-timezone` (feature, nuestro lado); la comprobación en el otro lado y la decisión sobre los campos son coordinadas |
+| J-07 | Media | 3 | **ADR 0017** — contrato de error end-to-end y texto de cara a la clienta | **requiere coordinación con saaspa-backend, no fusionar de un solo lado** |
+| J-10 | Baja-media | 4 | **ADR 0019** — identificador de conversación/sesión emitido por el servidor y retención | `docs/adr-0019-conversation-id-and-retention` (docs) + `fix/conversation-id-format-validation` (fix) y `feature/memory-retention-and-purge` (feature, Fase 5); el vínculo sesión↔conversación es de backend |
 | J-11 | Baja | 4 | Sin ADR (higiene de contrato) | Pedido a backend (nombre de cabecera por dirección) + ajuste de `BackendClient` cuando se toque |
 | J-12 | Baja | 4 | Sin ADR (correlación) | Pedido a backend (comparar `iaResponse.turnId`); aquí solo la nota de contrato |
 | J-13 | Baja | 4 | Sin ADR (herramienta de proceso) | `feature/contract-conformance-cases` (feature) aquí; el backend ejecuta los mismos casos |
@@ -134,7 +138,7 @@
 - *Aquí:* decidir y dejar escrito qué significa «Fase 1 validada» (hoy: por API) y cuándo entra el widget.
 - *Otros repos:* `saaspa-frontend` (widget mínimo: mensaje, `conversationId` persistido, textos de error
   propios, 413/429/502/504 diferenciados y superficie para la confirmación explícita que exige R9/ADR 0008).
-- *ADR:* **0017** (dónde vive el widget y qué se declara validado en la Fase 1).
+- *ADR:* **0018** (dónde vive el widget y qué se declara validado en la Fase 1).
 - *Checklist:* Fase 2/5 (piloto), en paralelo a la ola 1.
 - *Rama:* el trabajo es del tercer repo; aquí solo el ADR y el estado en README/AGENTS.md.
 
@@ -162,7 +166,7 @@
   quitarlos del contrato (hoy son obligatorios y **muertos**: no llegan al prompt).
 - *Otros repos:* `saaspa-backend` (avisar o fallar en el arranque si su `TENANT_ID`/`TENANT_TIMEZONE` no
   coinciden con lo que publica este servicio) y el contrato `chat-api` si se retiran campos.
-- *ADR:* **0015** (verificación del acople y campos muertos del chat). El lado documental del acople ya está en
+- *ADR:* **0016** (verificación del acople y campos muertos del chat). El lado documental del acople ya está en
   **§11.6** y el límite («advertencia manual, sin comprobación en runtime ni en CI») en el hallazgo J-06.
 - *Checklist:* Fase 2, «misma pasada».
 - *Rama:* `feature/actuator-info-tenant-and-timezone` (feature, solo nuestro lado, aislable); la comprobación en
@@ -174,7 +178,7 @@
   puede ser el `detail` interno de IA.
 - *Otros repos:* `saaspa-backend` (filtro global de errores si se elige RFC 9457, mapeo de los errores de IA a
   texto fijo para la clienta y registro del `detail` con el `turnId`) y `saaspa-frontend` (su tipo de error).
-- *ADR:* **0016** (contrato de error end-to-end y frontera entre error interno y mensaje a la clienta).
+- *ADR:* **0017** (contrato de error end-to-end y frontera entre error interno y mensaje a la clienta).
 - *Checklist:* Fase 2, «misma pasada».
 - *Rama:* **requiere coordinación con saaspa-backend, no fusionar de un solo lado.**
 
@@ -185,9 +189,9 @@
   poda de la memoria con política de retención (**A-17**).
 - *Otros repos:* `saaspa-backend` (emitir siempre el id en el servidor, atarlo a una sesión firmada y podar
   `chat_conversation_states`).
-- *ADR:* **0018** (identificador de conversación/sesión emitido por el servidor y retención).
+- *ADR:* **0019** (identificador de conversación/sesión emitido por el servidor y retención).
 - *Checklist:* Fase 5 (la poda conviene meterla con el trabajo de despliegue, no después).
-- *Rama:* `docs/adr-0018-conversation-id-and-retention`, luego `fix/conversation-id-format-validation` (fix) y
+- *Rama:* `docs/adr-0019-conversation-id-and-retention`, luego `fix/conversation-id-format-validation` (fix) y
   `feature/memory-retention-and-purge` (feature); el vínculo sesión↔conversación es pedido.
 
 **J-11 — Una cabecera, dos secretos (Baja).**
