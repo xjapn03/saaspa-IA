@@ -52,11 +52,11 @@ class UsageLoggingTest {
 		UUID turnId = UUID.randomUUID();
 
 		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
-				null, null, "customer-agent.v1", "deepseek-flash", 1200, 80, 1500));
+				null, null, "customer-agent.v1", "deepseek-flash", 1200, 80, 1500, TurnLogService.Status.OK));
 
 		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
 				SELECT tenant_id, conversation_id, channel, agent, user_id, role, prompt_version, model,
-				       tokens_in, tokens_out, latency_ms
+				       tokens_in, tokens_out, latency_ms, status
 				FROM ia.turn_log WHERE turn_id = ?
 				""", turnId);
 
@@ -64,9 +64,27 @@ class UsageLoggingTest {
 				.containsEntry("channel", "WEB_WIDGET").containsEntry("agent", "CLIENTAS")
 				.containsEntry("prompt_version", "customer-agent.v1").containsEntry("model", "deepseek-flash")
 				.containsEntry("tokens_in", 1200).containsEntry("tokens_out", 80)
-				.containsEntry("latency_ms", 1500);
+				.containsEntry("latency_ms", 1500).containsEntry("status", "OK");
 		assertThat(row.get("user_id")).isNull();
 		assertThat(row.get("role")).isNull();
+	}
+
+	@Test
+	@DisplayName("registra el turno cortado por el deadline con su estado (ADR 0014)")
+	void recordsDeadlineTurns() {
+		UUID turnId = UUID.randomUUID();
+
+		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
+				null, null, null, null, 0, 0, 20_000, TurnLogService.Status.DEADLINE));
+
+		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
+				SELECT status, latency_ms, prompt_version, model
+				FROM ia.turn_log WHERE turn_id = ?
+				""", turnId);
+
+		assertThat(row).containsEntry("status", "DEADLINE").containsEntry("latency_ms", 20_000);
+		assertThat(row.get("prompt_version")).isNull();
+		assertThat(row.get("model")).isNull();
 	}
 
 	@Test
@@ -115,9 +133,9 @@ class UsageLoggingTest {
 	@DisplayName("aisla los registros por tenant")
 	void isolatesTenants() {
 		this.turnLogService.record(new TurnLogService.TurnLog(UUID.randomUUID(), "kamerinos", "conv-1", "WEB_WIDGET",
-				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 10, 5, 100));
+				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 10, 5, 100, TurnLogService.Status.OK));
 		this.turnLogService.record(new TurnLogService.TurnLog(UUID.randomUUID(), "otro-tenant", "conv-9", "WEB_WIDGET",
-				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 20, 6, 200));
+				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 20, 6, 200, TurnLogService.Status.OK));
 
 		assertThat(countTurns("kamerinos")).isEqualTo(1);
 		assertThat(countTurns("otro-tenant")).isEqualTo(1);
@@ -131,7 +149,8 @@ class UsageLoggingTest {
 				any(Object[].class));
 
 		assertThatCode(() -> new TurnLogService(broken).record(new TurnLogService.TurnLog(UUID.randomUUID(),
-				"kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS", null, null, "customer-agent.v1", "model", 1, 1, 1)))
+				"kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS", null, null, "customer-agent.v1", "model", 1, 1, 1,
+				TurnLogService.Status.OK)))
 				.doesNotThrowAnyException();
 		assertThatCode(() -> new ToolCallLogger(broken, JsonMapper.builder().build()).record(UUID.randomUUID(),
 				"kamerinos", "listarServicios", ToolCallLogger.ToolCallStatus.OK, 1, "{}", "{}"))

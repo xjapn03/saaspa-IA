@@ -31,3 +31,11 @@ reintentar durante minutos, con coste y con el turno bloqueado.
 **Nota (no bloqueo):** tras A-02 los turnos de handoff ya no llaman al modelo, así que el deadline de
 35s aplica sobre todo a catálogo/disponibilidad. Queda como valor a revisar con los datos reales de
 latencia de T1.8/T1.9.
+
+## Addendum (2026-09-26)
+
+Los **valores** de `saaspa.llm.read-timeout` y `saaspa.llm.turn-deadline` quedan ajustados por el
+**ADR 0014** (lectura 10 s, deadline 20 s) para respetar la escalera end-to-end con NestJS
+(`IA_BOT_TIMEOUT_MS`, 25 s): `read-timeout < turn-deadline < timeout del backend`. El mecanismo de esta
+ADR no cambia; el ADR 0014 añade además el `turnId` en el `ProblemDetail` del 504 y el registro del turno
+cortado (`status = DEADLINE`) en `ia.turn_log`.

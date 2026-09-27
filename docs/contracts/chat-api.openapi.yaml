@@ -74,7 +74,10 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '504':
           description: >-
-            El modelo no respondio dentro del deadline del turno (saaspa.llm.turn-deadline)
+            El modelo no respondio dentro del deadline del turno (`saaspa.llm.turn-deadline`, 20 s por
+            defecto; ADR 0014). La escalera end-to-end exige turn-deadline < el timeout con el que NestJS
+            llama a este servicio (`IA_BOT_TIMEOUT_MS`, 25 s). El `ProblemDetail` incluye el `turnId` y el
+            turno queda registrado en `ia.turn_log` con `status = DEADLINE`.
           content:
             application/problem+json:
               schema:
@@ -193,3 +196,8 @@ components:
         status: { type: integer }
         detail: { type: string }
         instance: { type: string, format: uri }
+        turnId:
+          type: string
+          description: >-
+            Solo en el 504 (ADR 0014): identificador del turno, para correlacionar el fallo con NestJS y con
+            la fila de `ia.turn_log` (que se registra con `status = DEADLINE`).

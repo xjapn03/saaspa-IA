@@ -133,6 +133,10 @@
 ### Ola 3 — baratos, en la misma pasada
 
 **J-04 — Escalera de timeouts invertida y turno fantasma (Alta).**
+> **Estado (2026-09-27):** la mitad de este repo está hecha en la rama `fix/timeout-ladder`
+> (`read-timeout` 10 s, `turn-deadline` 20 s, `turnId` en el 504 y fila `DEADLINE` en `ia.turn_log`).
+> **No se fusiona** hasta que el backend tenga su `IA_BOT_TIMEOUT_MS` en 25 s y la persona revise los dos
+> números juntos (ADR 0014: `read-timeout < turn-deadline < timeout del backend`, nunca al revés).
 - *Aquí (nuestra mitad):* bajar `saaspa.llm.read-timeout` a 8-10 s y `turn-deadline` a 20 s (hoy 30 s/35 s y
   hasta ~61 s de peor caso con el reintento de ADR 0009), probar que el deadline **cancela** la lectura en
   vuelo y que un turno abandonado no deja respuesta en la memoria, devolver el `turnId` en el `ProblemDetail`
