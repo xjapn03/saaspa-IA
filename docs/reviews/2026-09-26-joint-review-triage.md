@@ -72,6 +72,9 @@
   Fase 2). Lo demás es pedido, no rama.
 
 **B-01 — Expiro de las citas en `PENDIENTE_PAGO` + tope de reservas pendientes (Alta; ID de este triaje).**
+> **Estado (2026-09-27):** implementado en el backend (PR #77: estado `EXPIRADA`, ventana de pago
+> `BOOKING_PAYMENT_TTL_MINUTES` y tope `BOOKING_MAX_PENDING_PER_USER`). De este lado, el contrato ya expone
+> `EXPIRADA` y el caso `B01-franja-liberada-por-expiracion` está en el dataset `eval/` (ver ADR 0011).
 - *Aquí:* nada de runtime. Nuestra parte es el contrato (`internal-api.openapi.yaml`: qué devuelve una cita
   expirada y qué código/estado se espera) y un caso en `eval/` para el reintento tras expirar.
 - *Otros repos:* `saaspa-backend` (trabajo de expiración; hoy `findOccupied` cuenta como ocupada toda cita que
