@@ -40,6 +40,7 @@ import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.security.TurnTokenAuthentication;
 import com.juanp.saaspa.ia.tools.ToolsConfig;
+import com.juanp.saaspa.ia.usage.OriginHasher;
 import com.juanp.saaspa.ia.usage.ToolCallLogger;
 import com.juanp.saaspa.ia.usage.TurnLogService;
 import com.juanp.saaspa.ia.usage.TurnCostGuard;
@@ -87,10 +88,10 @@ class ChatControllerHandoffTest {
 					Duration.ofSeconds(35));
 			TenantProperties tenantProperties = context.getBean(TenantProperties.class);
 			ChatController controller = new ChatController(agent, turnLogService, policy, llmProperties,
-					tenantProperties, turnCostGuard);
+					tenantProperties, turnCostGuard, new OriginHasher("test-salt"));
 
 			TurnToken token = new TurnToken(TURN_ID.toString(), "kamerinos", "conv-1", TurnToken.Channel.WEB_WIDGET,
-					TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300), "turn-token-123");
+					TurnToken.Agent.CLIENTAS, null, null, null, Instant.now().plusSeconds(300), "turn-token-123");
 			SecurityContextHolder.getContext().setAuthentication(new TurnTokenAuthentication(token));
 			try {
 				ChatResponseDto response = controller.chat(healthRequest());

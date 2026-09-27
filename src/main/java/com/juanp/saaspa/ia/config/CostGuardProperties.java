@@ -22,6 +22,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param tenantMaxTokens tokens maximos (entrada + salida) por tenant en la ventana
  * @param conversationMaxTurns turnos maximos por conversacion en la ventana
  * @param conversationMaxTokens tokens maximos (entrada + salida) por conversacion en la ventana
+ * @param originMaxTurns turnos maximos por origen en la ventana (ADR 0020: el usuario si el turno esta
+ * identificado, la IP resuelta por el backend si es anonimo)
+ * @param originSalt sal del hash con el que se guarda el origen (nunca la IP en claro); obligatoria en
+ * produccion
  */
 @ConfigurationProperties("saaspa.cost-guard")
 public record CostGuardProperties(
@@ -30,5 +34,7 @@ public record CostGuardProperties(
 		@DefaultValue("240") int tenantMaxTurns,
 		@DefaultValue("1000000") long tenantMaxTokens,
 		@DefaultValue("30") int conversationMaxTurns,
-		@DefaultValue("150000") long conversationMaxTokens) {
+		@DefaultValue("150000") long conversationMaxTokens,
+		@DefaultValue("60") int originMaxTurns,
+		@DefaultValue("") String originSalt) {
 }

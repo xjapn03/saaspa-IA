@@ -107,7 +107,8 @@ class TurnToolIntegrationTest {
 		this.jdbcTemplate.update("DELETE FROM ia.tool_call_log");
 		SecurityContextHolder.getContext().setAuthentication(new TurnTokenAuthentication(
 				new TurnToken(TURN_ID.toString(), "kamerinos", "conv-it", TurnToken.Channel.WEB_WIDGET,
-						TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300), "turn-token-123")));
+						TurnToken.Agent.CLIENTAS, null, null, null, Instant.now().plusSeconds(300),
+						"turn-token-123")));
 	}
 
 	@AfterAll

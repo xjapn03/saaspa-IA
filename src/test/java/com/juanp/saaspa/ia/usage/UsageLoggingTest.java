@@ -53,11 +53,11 @@ class UsageLoggingTest {
 
 		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
 				null, null, "customer-agent.v1", "deepseek-flash", 1200, 80, 1500, TurnLogService.Status.OK, null,
-				null));
+				null, "hash-del-origen"));
 
 		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
 				SELECT tenant_id, conversation_id, channel, agent, user_id, role, prompt_version, model,
-				       tokens_in, tokens_out, latency_ms, status, handoff_reason, error_code
+				       tokens_in, tokens_out, latency_ms, status, handoff_reason, error_code, origin_hash
 				FROM ia.turn_log WHERE turn_id = ?
 				""", turnId);
 
@@ -71,6 +71,8 @@ class UsageLoggingTest {
 		// ADR 0015: el motivo del handoff y el codigo de error solo se llenan en su propio desenlace.
 		assertThat(row.get("handoff_reason")).isNull();
 		assertThat(row.get("error_code")).isNull();
+		// ADR 0020: el origen se guarda hasheado (nunca la IP).
+		assertThat(row).containsEntry("origin_hash", "hash-del-origen");
 	}
 
 	@Test
@@ -79,7 +81,7 @@ class UsageLoggingTest {
 		UUID turnId = UUID.randomUUID();
 
 		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
-				null, null, null, null, 0, 0, 20_000, TurnLogService.Status.DEADLINE, null, null));
+				null, null, null, null, 0, 0, 20_000, TurnLogService.Status.DEADLINE, null, null, null));
 
 		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
 				SELECT status, latency_ms, prompt_version, model
@@ -97,7 +99,7 @@ class UsageLoggingTest {
 		UUID turnId = UUID.randomUUID();
 
 		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
-				null, null, null, null, 0, 0, 12, TurnLogService.Status.HANDOFF, "HEALTH_TOPIC", null));
+				null, null, null, null, 0, 0, 12, TurnLogService.Status.HANDOFF, "HEALTH_TOPIC", null, "hash-handoff"));
 
 		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
 				SELECT status, handoff_reason, error_code, tokens_in, tokens_out, model
@@ -116,7 +118,7 @@ class UsageLoggingTest {
 		UUID turnId = UUID.randomUUID();
 
 		this.turnLogService.record(new TurnLogService.TurnLog(turnId, "kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS",
-				null, null, null, null, 0, 0, 900, TurnLogService.Status.ERROR, null, "BACKEND_UNAVAILABLE"));
+				null, null, null, null, 0, 0, 900, TurnLogService.Status.ERROR, null, "BACKEND_UNAVAILABLE", null));
 
 		Map<String, Object> row = this.jdbcTemplate.queryForMap("""
 				SELECT status, error_code, handoff_reason, tokens_in, tokens_out
@@ -175,10 +177,10 @@ class UsageLoggingTest {
 	void isolatesTenants() {
 		this.turnLogService.record(new TurnLogService.TurnLog(UUID.randomUUID(), "kamerinos", "conv-1", "WEB_WIDGET",
 				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 10, 5, 100, TurnLogService.Status.OK,
-				null, null));
+				null, null, null));
 		this.turnLogService.record(new TurnLogService.TurnLog(UUID.randomUUID(), "otro-tenant", "conv-9", "WEB_WIDGET",
 				"CLIENTAS", null, null, "customer-agent.v1", "deepseek-flash", 20, 6, 200, TurnLogService.Status.OK,
-				null, null));
+				null, null, null));
 
 		assertThat(countTurns("kamerinos")).isEqualTo(1);
 		assertThat(countTurns("otro-tenant")).isEqualTo(1);
@@ -193,7 +195,7 @@ class UsageLoggingTest {
 
 		assertThatCode(() -> new TurnLogService(broken).record(new TurnLogService.TurnLog(UUID.randomUUID(),
 				"kamerinos", "conv-1", "WEB_WIDGET", "CLIENTAS", null, null, "customer-agent.v1", "model", 1, 1, 1,
-				TurnLogService.Status.OK, null, null)))
+				TurnLogService.Status.OK, null, null, null)))
 				.doesNotThrowAnyException();
 		assertThatCode(() -> new ToolCallLogger(broken, JsonMapper.builder().build()).record(UUID.randomUUID(),
 				"kamerinos", "listarServicios", ToolCallLogger.ToolCallStatus.OK, 1, "{}", "{}"))

@@ -55,6 +55,7 @@ import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.security.TurnTokenAuthentication;
 import com.juanp.saaspa.ia.tools.CustomerTools;
 import com.juanp.saaspa.ia.usage.LoggingToolCallback;
+import com.juanp.saaspa.ia.usage.OriginHasher;
 import com.juanp.saaspa.ia.usage.ToolCallLogger;
 
 import reactor.core.publisher.Flux;
@@ -74,6 +75,11 @@ class ChatApiTurnIntegrationTest {
 	private static final String SERVICE_KEY = "test-service-key";
 
 	private static final String KID = "kid-current";
+
+	/** IP del origen que el backend pondra en el claim {@code clientIp} (ADR 0020). */
+	private static final String CLIENT_IP = "203.0.113.7";
+
+	private static final String ORIGIN_SALT = "test-origin-salt";
 
 	private static final String SERVICES_PATH = "/api/internal/v1/services";
 
@@ -103,6 +109,7 @@ class ChatApiTurnIntegrationTest {
 		registry.add("saaspa.backend.base-url", BACKEND::baseUrl);
 		registry.add("saaspa.backend.internal-api-key", () -> "test-key");
 		registry.add("saaspa.tenant.default", () -> "kamerinos");
+		registry.add("saaspa.cost-guard.origin-salt", () -> ORIGIN_SALT);
 	}
 
 	@Value("${local.server.port}")
@@ -148,6 +155,10 @@ class ChatApiTurnIntegrationTest {
 		assertThat(count("ia.turn_log")).isEqualTo(1);
 		assertThat(this.jdbcTemplate.queryForObject("SELECT tenant_id FROM ia.turn_log", String.class))
 				.isEqualTo("kamerinos");
+		// ADR 0020: el turno anonimo guarda el hash de su origen (la IP del claim clientIp), nunca la IP.
+		String originHash = this.jdbcTemplate.queryForObject("SELECT origin_hash FROM ia.turn_log", String.class);
+		assertThat(originHash).isEqualTo(new OriginHasher(ORIGIN_SALT).hash("ip:" + CLIENT_IP))
+				.doesNotContain(CLIENT_IP);
 	}
 
 	@Test
@@ -249,12 +260,15 @@ class ChatApiTurnIntegrationTest {
 		claims.put("jti", TURN_ID.toString());
 		claims.put("agent", "CLIENTAS");
 		claims.put("tenantId", "kamerinos");
+		// Claim de origen (ADR 0020 / H-04): lo emitira saaspa-backend con la IP resuelta por su proxy.
+		claims.put("clientIp", CLIENT_IP);
 		return claims;
 	}
 
 	private static TurnToken turnToken() {
+		// Turno anonimo con la IP que resuelve el backend (ADR 0020): el origen se guarda hasheado.
 		return new TurnToken(TURN_ID.toString(), "kamerinos", "conv-1", TurnToken.Channel.WEB_WIDGET,
-				TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300), "turn-token-it");
+				TurnToken.Agent.CLIENTAS, null, null, CLIENT_IP, Instant.now().plusSeconds(300), "turn-token-it");
 	}
 
 	private int count(String table) {

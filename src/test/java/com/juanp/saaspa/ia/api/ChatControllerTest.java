@@ -32,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -52,6 +53,7 @@ import com.juanp.saaspa.ia.security.TurnToken;
 import com.juanp.saaspa.ia.usage.CostLimitExceededException;
 import com.juanp.saaspa.ia.usage.CostLimitExceededException.Measure;
 import com.juanp.saaspa.ia.usage.CostLimitExceededException.Scope;
+import com.juanp.saaspa.ia.usage.OriginHasher;
 import com.juanp.saaspa.ia.usage.TurnCostGuard;
 import com.juanp.saaspa.ia.usage.TurnLogService;
 
@@ -62,12 +64,18 @@ import com.juanp.saaspa.ia.usage.TurnLogService;
  * <p>El agente se sustituye por un doble (R14): no hay llamada a un LLM real ni al backend.
  */
 @WebMvcTest(ChatController.class)
-@Import({ SecurityConfig.class, HandoffConfig.class, LlmClientConfig.class, TenantPropertiesConfig.class })
+@Import({ SecurityConfig.class, HandoffConfig.class, LlmClientConfig.class, TenantPropertiesConfig.class,
+		OriginHasherConfig.class })
 class ChatControllerTest {
 
 	private static final String SERVICE_KEY = "test-service-key";
 
 	private static final String KID = "kid-current";
+
+	/** Sal del hash de origen en el test: el valor esperado se calcula con ella. */
+	static final String ORIGIN_SALT = "test-origin-salt";
+
+	private static final String CLIENT_IP = "203.0.113.7";
 
 	private static final UUID TURN_ID = UUID.fromString("11111111-2222-3333-4444-555555555555");
 
@@ -132,7 +140,29 @@ class ChatControllerTest {
 		assertThat(turnLog.getValue().status()).isEqualTo(TurnLogService.Status.OK);
 
 		// ADR 0010: el tope de coste se consulta antes de llamar al modelo.
-		then(this.turnCostGuard).should().check("kamerinos", "conv-1");
+		then(this.turnCostGuard).should().check("kamerinos", "conv-1", null);
+		// ADR 0020: sin usuario ni IP (claim pendiente del backend) el turno se registra sin origen.
+		assertThat(turnLog.getValue().originHash()).isNull();
+	}
+
+	@Test
+	@DisplayName("el origen del turno se hashea y es la clave del tope por origen, nunca la IP en claro (ADR 0020)")
+	void hashesTheTurnOrigin() throws Exception {
+		given(this.customerAgent.reply(any(TurnToken.class), any(String.class)))
+				.willReturn(new CustomerAgent.CustomerReply("Hola", "customer-agent.v2", "deepseek-flash", 10, 5));
+		Map<String, Object> claims = claims("CLIENTAS", "kamerinos");
+		claims.put("clientIp", CLIENT_IP);
+
+		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
+				.header("Authorization", bearer(claims))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(requestJson("kamerinos", "CLIENTAS", "Hola")))
+				.andExpect(status().isOk());
+
+		// El tope por origen y la fila del turno reciben el HMAC, no la IP.
+		String expected = new OriginHasher(ORIGIN_SALT).hash("ip:" + CLIENT_IP);
+		then(this.turnCostGuard).should().check("kamerinos", "conv-1", expected);
+		assertThat(capturedTurnLog().originHash()).isEqualTo(expected).doesNotContain(CLIENT_IP);
 	}
 
 	@Test
@@ -253,7 +283,7 @@ class ChatControllerTest {
 	void rejectsTurnsOverTheCostLimit() throws Exception {
 		willThrow(new CostLimitExceededException(Scope.CONVERSATION, Measure.TURNS, 30, 30, Duration.ofHours(1)))
 				.given(this.turnCostGuard)
-				.check("kamerinos", "conv-1");
+				.check("kamerinos", "conv-1", null);
 
 		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
 				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
@@ -423,4 +453,17 @@ class ChatControllerTest {
 @TestConfiguration(proxyBeanMethods = false)
 @EnableConfigurationProperties(TenantProperties.class)
 class TenantPropertiesConfig {
+}
+
+/**
+ * Hasheador de origen real en el slice {@code @WebMvcTest} (el controlador lo necesita para calcular la
+ * clave del tope por origen, ADR 0020): con una sal fija el test puede calcular el hash esperado.
+ */
+@TestConfiguration(proxyBeanMethods = false)
+class OriginHasherConfig {
+
+	@Bean
+	OriginHasher originHasher() {
+		return new OriginHasher(ChatControllerTest.ORIGIN_SALT);
+	}
 }

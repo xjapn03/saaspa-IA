@@ -23,8 +23,9 @@ public class TurnLogService {
 
 	private static final String INSERT_TURN = """
 			INSERT INTO ia.turn_log (turn_id, tenant_id, conversation_id, channel, agent, user_id, role,
-				prompt_version, model, tokens_in, tokens_out, latency_ms, status, handoff_reason, error_code)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				prompt_version, model, tokens_in, tokens_out, latency_ms, status, handoff_reason, error_code,
+				origin_hash)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			""";
 
 	private final JdbcTemplate jdbcTemplate;
@@ -43,7 +44,7 @@ public class TurnLogService {
 			this.jdbcTemplate.update(INSERT_TURN, turn.turnId(), turn.tenantId(), turn.conversationId(),
 					turn.channel(), turn.agent(), turn.userId(), turn.role(), turn.promptVersion(), turn.model(),
 					turn.tokensIn(), turn.tokensOut(), turn.latencyMs(), turn.status().name(), turn.handoffReason(),
-					turn.errorCode());
+					turn.errorCode(), turn.originHash());
 		}
 		catch (DataAccessException ex) {
 			log.error("No se pudo registrar el turno en ia.turn_log: {}", ex.getClass().getSimpleName());
@@ -122,9 +123,11 @@ public class TurnLogService {
 	 * ({@code HEALTH_TOPIC} | {@code COMPLAINT} | {@code EXPLICIT_REQUEST}); {@code null} en el resto
 	 * @param errorCode tipo de fallo ({@link ErrorCode}) cuando {@code status = ERROR}; {@code null} en el
 	 * resto
+	 * @param originHash hash del origen del turno (ADR 0020) con el que se cuentan los turnos por origen;
+	 * {@code null} si el turno no trae origen (username/IP) todavia
 	 */
 	public record TurnLog(UUID turnId, String tenantId, String conversationId, String channel, String agent,
 			String userId, String role, String promptVersion, String model, int tokensIn, int tokensOut,
-			long latencyMs, Status status, String handoffReason, String errorCode) {
+			long latencyMs, Status status, String handoffReason, String errorCode, String originHash) {
 	}
 }

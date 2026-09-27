@@ -51,7 +51,7 @@ class LoggingToolCallbackTest {
 	void authenticate() {
 		SecurityContextHolder.getContext()
 				.setAuthentication(new TurnTokenAuthentication(new TurnToken(TURN_ID.toString(), "kamerinos", "conv-1",
-						TurnToken.Channel.WEB_WIDGET, TurnToken.Agent.CLIENTAS, null, null,
+						TurnToken.Channel.WEB_WIDGET, TurnToken.Agent.CLIENTAS, null, null, null,
 						Instant.now().plusSeconds(300), "turn-token-123")));
 	}
 

@@ -35,6 +35,15 @@ public class UsageConfig {
 		return new TurnCostGuard(jdbcTemplate, costGuardProperties);
 	}
 
+	/**
+	 * @param costGuardProperties configuracion del guardia (incluye la sal del hash de origen)
+	 * @return el hasheador con el que el turno guarda su origen sin almacenar la IP (ADR 0020)
+	 */
+	@Bean
+	public OriginHasher originHasher(CostGuardProperties costGuardProperties) {
+		return new OriginHasher(costGuardProperties.originSalt());
+	}
+
 	@Bean
 	public ToolCallLogger toolCallLogger(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
 		return new ToolCallLogger(jdbcTemplate, objectMapper);

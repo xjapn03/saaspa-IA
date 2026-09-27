@@ -185,7 +185,7 @@ class CustomerAgentTest {
 	}
 
 	private static TurnToken turnToken(TurnToken.Channel channel, String conversationId) {
-		return new TurnToken("turn-1", "kamerinos", conversationId, channel, TurnToken.Agent.CLIENTAS, null, null,
+		return new TurnToken("turn-1", "kamerinos", conversationId, channel, TurnToken.Agent.CLIENTAS, null, null, null,
 				Instant.now().plusSeconds(300), "turn-token-123");
 	}
 }

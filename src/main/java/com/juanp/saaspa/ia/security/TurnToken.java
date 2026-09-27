@@ -15,6 +15,7 @@ import java.time.Instant;
  * @param agent agente que debe atender
  * @param userId usuario autenticado, si lo hay
  * @param role rol del usuario, si lo hay
+ * @param clientIp IP del origen resuelta por el backend con su proxy de confianza (claim opcional, ADR 0020)
  * @param expiresAt caducidad del token
  * @param rawToken token original, que se reenvia tal cual a la API interna del backend
  */
@@ -26,6 +27,7 @@ public record TurnToken(
 		Agent agent,
 		String userId,
 		Role role,
+		String clientIp,
 		Instant expiresAt,
 		String rawToken) {
 
@@ -74,5 +76,23 @@ public record TurnToken(
 	/** @return {@code true} si el turno viene de una visitante anonima */
 	public boolean isAnonymous() {
 		return this.userId == null;
+	}
+
+	/**
+	 * Clave de origen del turno para el tope de coste por origen (ADR 0020, hallazgo H-04): el usuario
+	 * cuando el turno esta identificado y la IP resuelta por el backend cuando es anonimo.
+	 *
+	 * <p>Es la unica clave de origen que <strong>no se puede rotar</strong>: el {@code conversationId} y la
+	 * sesion anonima si se pueden descartar (y con ellos se reiniciaba su tope). Cada fuente lleva su
+	 * prefijo ({@code user:} / {@code ip:}) para que un id de usuario no pueda colisionar con una IP.
+	 *
+	 * @return clave de origen, o {@code null} si el token no trae ni usuario ni IP (claim de H-04 aun sin
+	 * emitir por el backend: entonces el turno se registra sin origen y no se le aplica el tope por origen)
+	 */
+	public String origin() {
+		if (this.userId != null) {
+			return "user:" + this.userId;
+		}
+		return this.clientIp == null ? null : "ip:" + this.clientIp;
 	}
 }

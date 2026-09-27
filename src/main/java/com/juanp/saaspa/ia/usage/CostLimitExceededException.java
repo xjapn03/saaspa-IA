@@ -18,7 +18,13 @@ public class CostLimitExceededException extends RuntimeException {
 		TENANT,
 
 		/** Tope de la conversacion. */
-		CONVERSATION
+		CONVERSATION,
+
+		/**
+		 * Tope del origen del turno (ADR 0020): el usuario si el turno esta identificado, la IP resuelta
+		 * por el backend si es anonimo. Es el que acota el abuso de una sola IP.
+		 */
+		ORIGIN
 
 	}
 
