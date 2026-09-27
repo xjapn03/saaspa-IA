@@ -114,15 +114,15 @@ Aceptadas: 0001 a 0005 (2026-09-23). Ver `docs/adr/`.
 `docs/adr/0014-turn-deadline-ladder-and-correlation.md` (2026-09-26, ola 3 del triaje: ajusta los valores
 de la escalera de plazos y añade la correlación del 504 y el registro del turno cortado).
 
-**Ola 1 de la Fase 2** (2026-09-26 — ver el triaje conjunto, §3). **0010, 0011 y 0012 están Aceptadas**;
-**0013 sigue en Propuesta** porque el destino del handoff no está decidido:
+**Ola 1 de la Fase 2** (2026-09-26 — ver el triaje conjunto, §3). **Las cuatro están Aceptadas**; la 0013 con el
+destino ya decidido:
 
 | ADR | Estado | Tema | Decisión |
 |---|---|---|---|
 | 0010 | **Aceptada** | Abuso y tope de coste | La mitad «sesión no falsificable» ya está resuelta en el backend (PR #76 fusionado: `trust proxy` de un salto y sesión anónima emitida y firmada por el servidor). Queda de este lado el **tope global por tenant** y el **coste por conversación**, con `ia.turn_log` como fuente de verdad y 429 al superar. |
 | 0011 | **Aceptada** | Expiración de `PENDIENTE_PAGO` | Implementación **100 % de `saaspa-backend`**, ya hecha (PR #77: estado `EXPIRADA`, ventana de pago configurable y tope de reservas pendientes). Este repo aporta el contrato (el enum de `Booking.status` ya expone `EXPIRADA`) y el caso `B01-franja-liberada-por-expiracion` del dataset `eval/`. |
 | 0012 | **Aceptada** | Identidad e idempotencia de escritura | Precisión de ADR 0008 y ADR 0006: el sujeto sale **siempre** de `turn.userId` (nunca del cuerpo), sin identidad no hay escritura (403, sin auto-creación) y la `Idempotency-Key` (construida por código, no por el modelo) hace que un reintento devuelva el mismo recurso. |
-| 0013 | Propuesta | Handoff con destino y reversible | El estado sigue en NestJS (A-10a); se exige que sea **reversible** y **auditable** (registro del turno derivado). El **destino** (aviso por WhatsApp del salón vs bandeja del dashboard) queda como **decisión abierta de la persona**. |
+| 0013 | **Aceptada** | Handoff con destino y reversible | El estado sigue en NestJS (A-10a) y debe ser **reversible** y **auditable**. Destino decidido: **aviso por correo al staff** reutilizando el módulo de correo de `saaspa-backend` (SendGrid), **no WhatsApp** (fuera de la ventana de 24 h la API exige plantilla pre-aprobada por Meta). La bandeja del dashboard queda pospuesta hasta el widget (J-02). El backend **debe capturar el texto** del turno derivado: ni su base ni nuestra memoria lo guardan (evidencia en el ADR). |
 
 **Correcciones aplicadas en la Fase 0** (2026-09-23):
 - ADR 0003: eliminar la línea "Sustituye a ADR 0003 (single-tenant) — descartado antes de su publicación" (confunde).
@@ -829,10 +829,10 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
   (0010 a 0018), tarea de checklist y rama propuesta o marca de coordinación con el backend.
 - Olas (fijadas por la persona): **1** bloqueantes de la escritura (J-03, B-01, J-08+J-09, J-05); **2** piloto
   en paralelo (J-01, J-02); **3** misma pasada (J-04, J-06, J-07); **4** pueden esperar (J-10 a J-13).
-- ADR de la ola 1 en `docs/adr/`: `0010-abuse-and-cost-controls.md`, `0011-pending-payment-expiry.md` y
-  `0012-write-identity-and-idempotency.md` están **Aceptadas** (2026-09-26);
-  `0013-handoff-destination-and-reversibility.md` sigue en **Propuesta** porque el destino del handoff no está
-  decidido. Las ADR 0014 a 0018 siguen como reserva del triaje.
+- ADR de la ola 1 en `docs/adr/`: `0010-abuse-and-cost-controls.md`, `0011-pending-payment-expiry.md`,
+  `0012-write-identity-and-idempotency.md` y `0013-handoff-destination-and-reversibility.md` están
+  **Aceptadas** (2026-09-26; la 0013 con el destino decidido: correo al staff con el módulo de `saaspa-backend`,
+  **no** WhatsApp). Las ADR 0014 a 0018 siguen como reserva del triaje.
 - **B-01 ya no tiene nada pendiente de este lado:** el backend implementó la expiración (PR #77, estado
   `EXPIRADA`), el contrato interno expone el estado y el caso `B01-franja-liberada-por-expiracion` está en el
   dataset `eval/` (real, no brecha).
@@ -913,6 +913,12 @@ guarda estado de sesión. Ya está **implementado y verificado** en `saaspa-back
   llamar** a este servicio: el bot no puede retomar la conversación.
 - Este servicio sigue informando `handoff.requested`/`reason` por turno; el estado de sesión no es suyo.
 - Evidencia y reconciliación: `docs/contracts/f1-e2e-validation.md`.
+- **Destino y reversibilidad (ADR 0013, aceptada el 2026-09-26):** el aviso va **por correo al staff**,
+  reutilizando el módulo de correo de `saaspa-backend` (SendGrid), **no** por WhatsApp: fuera de la ventana de
+  24 h la API de WhatsApp Business exige una plantilla pre-aprobada por Meta. La bandeja del dashboard queda
+  pospuesta hasta que exista el widget (J-02). El **texto del turno derivado lo tiene que capturar el backend**:
+  se verificó que nuestra memoria **no** guarda el mensaje de una clienta en un turno con handoff (evidencia
+  archivo:línea en el ADR 0013).
 
 Queda como efecto colateral **C-13** (los turnos con handoff no entran en la memoria del agente, porque el
 código responde sin llamar al modelo): se resolverá en la Fase 2 junto con la memoria.
@@ -967,6 +973,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — docs/adr-0010-0013-write-blockers — las cuatro ADR de la ola 1 del triaje, con estado **Propuesta** (no aceptadas, sin código): **0010** abuso y coste (la mitad «sesión no falsificable» la resolvió el backend en el PR #76 fusionado —`trust proxy` de un salto y sesión anónima firmada—, y queda de este lado el tope por tenant y el coste por conversación con `ia.turn_log` como fuente de verdad), **0011** expiración de `PENDIENTE_PAGO` (implementación 100 % del backend; aquí el contrato y el caso del dataset: propuesta de estado `EXPIRADA` en `Booking.status`), **0012** identidad e idempotencia de escritura (precisa los ADR 0008 y 0006: el sujeto siempre desde `turn.userId`, 403 sin identidad y `Idempotency-Key` construida por código) y **0013** handoff con destino y reversible (reversible y auditable, con el **destino como decisión abierta de la persona**); §4 de AGENTS.md y el checklist del triaje actualizados — verify verde (116 tests).
 - 2026-09-26 — docs/accept-write-blocker-adrs — **0010, 0011 y 0012 pasan a Aceptadas** (0013 sigue en Propuesta: el destino del handoff no está decidido) en los tres ficheros y en la tabla de §4; con `EXPIRADA` ya real en el backend (PR #77, fusionado el 2026-09-27 01:09 UTC) el contrato interno expone el estado (`Booking.status` y el 409 del tope de pendientes) y se implementa el caso **`B01-franja-liberada-por-expiracion`** del dataset (real, no brecha) con su nota en `eval/README.md`; checklist del triaje y el estado de B-01 actualizados — verify verde (116 tests).
 - 2026-09-26 — fix/timeout-ladder — **ADR 0014** (Aceptada, ola 3 del triaje) y la mitad de **J-04** que cae en este repo: `saaspa.llm.read-timeout` de 30 s a **10 s** y `turn-deadline` de 35 s a **20 s** (escalera `read-timeout < turn-deadline < IA_BOT_TIMEOUT_MS` del backend, 25 s; **el PR no se fusiona** hasta revisar los dos números juntos), `turnId` en el `ProblemDetail` del 504 y turno cortado por el deadline registrado en `ia.turn_log` con `status = DEADLINE` (migración Flyway `V2` + `TurnLogService.Status`); contrato de chat (504 y `turnId`), tests de contrato (504 con `turnId` y fila `DEADLINE`) y de Testcontainers (estado persistido) actualizados — verify verde (117 tests). **No se fusiona** hasta revisar los dos números con el backend.
+- 2026-09-26 — docs/accept-adr-0013-handoff-destination — **ADR 0013 pasa a Aceptada** con el destino decidido: aviso **por correo al staff** reutilizando el módulo de correo de `saaspa-backend` (SendGrid), **no** WhatsApp (fuera de la ventana de 24 h la API de WhatsApp Business exige plantilla pre-aprobada por Meta), y la bandeja del dashboard pospuesta hasta que exista el widget (J-02). Se documenta con evidencia (archivo:línea) que **la memoria no guarda el mensaje en un turno con handoff** (`ChatController.java:90,97-105,108`; `CustomerAgent.java:77`; `CustomerAgentConfig.java:45-48,63`, y `javap` sobre `MessageChatMemoryAdvisor`: escribe en `before`/`after`, y ninguno corre sin llamada al modelo), así que el backend debe capturar el texto del turno derivado; §4, §12 y §13 de AGENTS.md y el triaje al día; **sin código en esta rama** — verify verde (117 tests).
 
 ---
 
