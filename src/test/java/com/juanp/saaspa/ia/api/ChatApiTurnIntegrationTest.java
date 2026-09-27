@@ -127,6 +127,7 @@ class ChatApiTurnIntegrationTest {
 		BACKEND.resetAll();
 		this.jdbcTemplate.update("DELETE FROM ia.turn_log");
 		this.jdbcTemplate.update("DELETE FROM ia.tool_call_log");
+		this.jdbcTemplate.update("DELETE FROM ia.spring_ai_chat_memory");
 		ScriptedChatModel.CALLS.set(0);
 		SecurityContextHolder.getContext().setAuthentication(new TurnTokenAuthentication(turnToken()));
 	}
@@ -171,6 +172,29 @@ class ChatApiTurnIntegrationTest {
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(response.getBody()).contains("profesional").contains("\"reason\":\"HEALTH_TOPIC\"");
 		assertThat(ScriptedChatModel.CALLS.get()).isZero();
+	}
+
+	@Test
+	@DisplayName("un turno normal deja el mensaje en la memoria del agente")
+	void normalTurnWritesMemory() {
+		post("¿Cuánto cuesta el masaje relajante?");
+
+		// El asesor de memoria escribe dentro de la llamada al modelo; este test fija que hoy si escribe,
+		// para que el siguiente no pueda pasar por casualidad.
+		assertThat(count("ia.spring_ai_chat_memory")).isPositive();
+	}
+
+	@Test
+	@DisplayName("un turno con handoff NO escribe en la memoria del agente (ADR 0013)")
+	void handoffTurnDoesNotWriteMemory() {
+		ResponseEntity<String> response = post("Estoy embarazada, puedo hacerme el masaje?");
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		// El corte por HandoffPolicy ocurre antes de llamar al modelo, y la memoria la escribe
+		// MessageChatMemoryAdvisor en before()/after() de esa llamada: con handoff no corre ninguno de los
+		// dos. Si una actualizacion de Spring AI cambiara ese comportamiento, este test lo delata (y con el
+		// asesor dejaria de ser cierto que el backend tiene que capturar el texto del turno derivado).
+		assertThat(count("ia.spring_ai_chat_memory")).isZero();
 	}
 
 	@Test
