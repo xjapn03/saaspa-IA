@@ -98,6 +98,11 @@
   va al backend en la misma pasada, así que **la pasada se coordina** aunque nuestra parte sea aislable.
 
 **J-05 — El handoff no lo recibe nadie y es irreversible (Media-alta).**
+> **Estado (2026-09-27):** ADR 0013 **Aceptada**. Destino = **aviso por correo al staff** reutilizando el módulo
+> de correo de `saaspa-backend` (SendGrid), **no** WhatsApp (fuera de la ventana de 24 h la API exige plantilla
+> pre-aprobada por Meta); la bandeja del dashboard queda **pospuesta** hasta el widget (J-02). Verificado que
+> **nuestra memoria no guarda el mensaje en un turno con handoff**, así que el backend debe capturar el texto. El
+> trabajo es del backend.
 - *Aquí:* registrar el turno derivado en `turn_log` con estado y motivo (hoy, con A-02, el turno con handoff no
   llama al modelo y **no deja fila**: enlaza **A-08** y **C-13**); caso en `eval/` para el falso positivo de
   catálogo. Nada de estado de sesión: sigue siendo de NestJS (A-10a, ya resuelto).
