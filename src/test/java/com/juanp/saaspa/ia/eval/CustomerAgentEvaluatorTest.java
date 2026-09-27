@@ -165,8 +165,8 @@ class CustomerAgentEvaluatorTest {
 
 	private static TurnToken turnToken() {
 		return new TurnToken("11111111-2222-3333-4444-555555555555", "kamerinos", "conv-eval",
-				TurnToken.Channel.WEB_WIDGET, TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300),
-				"turn-token-eval");
+				TurnToken.Channel.WEB_WIDGET, TurnToken.Agent.CLIENTAS, null, null, null,
+				Instant.now().plusSeconds(300), "turn-token-eval");
 	}
 
 	/** {@code ChatModel} guionizado: devuelve una respuesta fija y cuenta las llamadas. */

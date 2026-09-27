@@ -265,7 +265,7 @@ class CustomerToolsTest {
 
 	private static void authenticate() {
 		TurnToken token = new TurnToken("turn-1", "kamerinos", "conv-1", TurnToken.Channel.WEB_WIDGET,
-				TurnToken.Agent.CLIENTAS, null, null, Instant.now().plusSeconds(300), TURN_TOKEN);
+				TurnToken.Agent.CLIENTAS, null, null, null, Instant.now().plusSeconds(300), TURN_TOKEN);
 		SecurityContextHolder.getContext().setAuthentication(new TurnTokenAuthentication(token));
 	}
 

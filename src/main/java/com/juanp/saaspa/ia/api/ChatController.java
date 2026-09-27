@@ -25,6 +25,7 @@ import com.juanp.saaspa.ia.config.LlmProperties;
 import com.juanp.saaspa.ia.config.TenantProperties;
 import com.juanp.saaspa.ia.security.CurrentTurnToken;
 import com.juanp.saaspa.ia.security.TurnToken;
+import com.juanp.saaspa.ia.usage.OriginHasher;
 import com.juanp.saaspa.ia.usage.TurnCostGuard;
 import com.juanp.saaspa.ia.usage.TurnLogService;
 
@@ -60,14 +61,18 @@ public class ChatController {
 
 	private final TurnCostGuard turnCostGuard;
 
+	private final OriginHasher originHasher;
+
 	public ChatController(CustomerAgent customerAgent, TurnLogService turnLogService, HandoffPolicy handoffPolicy,
-			LlmProperties llmProperties, TenantProperties tenantProperties, TurnCostGuard turnCostGuard) {
+			LlmProperties llmProperties, TenantProperties tenantProperties, TurnCostGuard turnCostGuard,
+			OriginHasher originHasher) {
 		this.customerAgent = customerAgent;
 		this.turnLogService = turnLogService;
 		this.handoffPolicy = handoffPolicy;
 		this.llmProperties = llmProperties;
 		this.tenantProperties = tenantProperties;
 		this.turnCostGuard = turnCostGuard;
+		this.originHasher = originHasher;
 	}
 
 	/**
@@ -94,6 +99,9 @@ public class ChatController {
 
 		long start = System.nanoTime();
 		HandoffPolicy.Decision handoff = this.handoffPolicy.evaluate(request.message().text());
+		// ADR 0020: el origen del turno (usuario o IP) se guarda hasheado y es la clave del tope por origen.
+		// Se calcula una vez por turno: vale para las cuatro ramas que registran fila.
+		String originHash = this.originHasher.hash(turnToken.origin());
 
 		String replyText;
 		String model;
@@ -121,7 +129,7 @@ public class ChatController {
 			// resuelto por HandoffPolicy no gasta tokens, asi que no se corta por presupuesto (R10 no
 			// depende del coste). El turno rechazado por el tope NO se registra, para que un abuso no
 			// escriba filas que alimenten su propio tope.
-			this.turnCostGuard.check(turnToken.tenantId(), turnToken.conversationId());
+			this.turnCostGuard.check(turnToken.tenantId(), turnToken.conversationId(), originHash);
 			try {
 				CustomerAgent.CustomerReply reply = this.replyWithDeadline(turnToken, request.message().text());
 				replyText = reply.text();
@@ -134,7 +142,7 @@ public class ChatController {
 			catch (LlmTimeoutException ex) {
 				// ADR 0014: un turno cortado por el deadline tambien deja fila, con estado (A-08).
 				recordTurn(request, turnToken, TurnLogService.Status.DEADLINE, null, null, null, null, 0, 0,
-						elapsedMs(start));
+						elapsedMs(start), originHash);
 				throw ex;
 			}
 			catch (RuntimeException ex) {
@@ -142,14 +150,15 @@ public class ChatController {
 				// haya respuesta. Sin esta fila, ia.turn_log no seria la fuente de verdad del consumo que
 				// promete ADR 0010. Los tokens se desconocen y quedan en 0 (cota inferior).
 				recordTurn(request, turnToken, TurnLogService.Status.ERROR, null, errorCode(ex).name(), null, null,
-						0, 0, elapsedMs(start));
+						0, 0, elapsedMs(start), originHash);
 				throw ex;
 			}
 		}
 		long latencyMs = elapsedMs(start);
 
 		recordTurn(request, turnToken, status, handoffReason, null, promptVersion, model,
-				promptTokens == null ? 0 : promptTokens, completionTokens == null ? 0 : completionTokens, latencyMs);
+				promptTokens == null ? 0 : promptTokens, completionTokens == null ? 0 : completionTokens, latencyMs,
+				originHash);
 
 		return new ChatResponseDto(request.turnId(),
 				new ChatResponseDto.Reply(replyText, List.of()),
@@ -159,16 +168,16 @@ public class ChatController {
 	}
 
 	/**
-	 * Registra el turno en {@code ia.turn_log} con su estado (ADR 0014 y ADR 0015). El registro nunca
-	 * tumba el turno: si la escritura falla, {@link TurnLogService} lo anota y sigue.
+	 * Registra el turno en {@code ia.turn_log} con su estado (ADR 0014, ADR 0015 y ADR 0020). El registro
+	 * nunca tumba el turno: si la escritura falla, {@link TurnLogService} lo anota y sigue.
 	 */
 	private void recordTurn(ChatRequestDto request, TurnToken turnToken, TurnLogService.Status status,
 			String handoffReason, String errorCode, String promptVersion, String model, int tokensIn, int tokensOut,
-			long latencyMs) {
+			long latencyMs, String originHash) {
 		this.turnLogService.record(new TurnLogService.TurnLog(request.turnId(), turnToken.tenantId(),
 				turnToken.conversationId(), turnToken.channel().name(), turnToken.agent().name(), turnToken.userId(),
 				turnToken.role() == null ? null : turnToken.role().name(), promptVersion, model, tokensIn, tokensOut,
-				latencyMs, status, handoffReason, errorCode));
+				latencyMs, status, handoffReason, errorCode, originHash));
 	}
 
 	/**

@@ -93,6 +93,16 @@ saaspa:
     # 150.000 tokens/hora por conversacion: 30 turnos x ~4.000 tokens = 120.000, con holgura por si crecen
     # el prompt o la memoria.
     conversation-max-tokens: ${IA_COST_GUARD_CONVERSATION_MAX_TOKENS:150000}
+    # Por ORIGEN del turno (ADR 0020 / H-04): 60 turnos/hora. Es el tope que corta a un abuso desde una sola
+    # IP, que antes podia quemar los 240 del tenant en ~12 minutos y dejar fuera a todas las clientas. Con
+    # 60, una IP consume como maximo un cuarto del presupuesto del tenant; el tope del tenant queda como
+    # senal de capacidad. La clave de origen es el usuario si el turno esta identificado y la IP resuelta por
+    # el backend si es anonimo (su claim clientIp); ni una ni otra se pueden rotar.
+    origin-max-turns: ${IA_COST_GUARD_ORIGIN_MAX_TURNS:60}
+    # Sal del hash con el que se guarda el origen en `ia.turn_log` (nunca la IP en claro). OBLIGATORIA en
+    # produccion: sin ella el tope por origen funciona igual, pero el hash de una IP se puede revertir por
+    # fuerza bruta desde la tabla (se avisa al arrancar).
+    origin-salt: ${IA_COST_GUARD_ORIGIN_SALT:}
   llm:
     # Timeouts del cliente HTTP hacia el modelo (ADR 0009). Aparte del cliente del backend.
     connect-timeout: ${LLM_CONNECT_TIMEOUT:3s}
