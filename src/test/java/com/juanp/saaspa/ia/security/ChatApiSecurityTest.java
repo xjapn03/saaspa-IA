@@ -57,13 +57,17 @@ class ChatApiSecurityTest {
 	}
 
 	@Test
-	@DisplayName("sin clave de servicio: 401 con ProblemDetail")
+	@DisplayName("sin clave de servicio: 401 con ProblemDetail, codigo estable y texto para la clienta")
 	void rejectsWithoutServiceKey() throws Exception {
 		this.mockMvc.perform(post("/api/v1/chat").header("Authorization", bearerValidToken()))
 				.andExpect(status().isUnauthorized())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 				.andExpect(jsonPath("$.status").value(401))
-				.andExpect(jsonPath("$.title").value("No autorizado"));
+				.andExpect(jsonPath("$.title").value("No autorizado"))
+				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+				// ADR 0017: el motivo (que falto o que no cuadro) queda en el log, no en el cuerpo.
+				.andExpect(jsonPath("$.detail")
+						.value("No pudimos validar tu sesion de chat; recarga la pagina e intenta de nuevo"));
 	}
 
 	@Test

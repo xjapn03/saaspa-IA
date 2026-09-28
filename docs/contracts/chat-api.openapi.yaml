@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: saaspa-IA - Chat API (NestJS -> IA)
-  version: 0.6.2
+  version: 0.6.3
   description: >-
-    Contrato IMPLEMENTADO v0.6.2. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    Contrato IMPLEMENTADO v0.6.3. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
     (informe: docs/contracts/f1-e2e-validation.md; la validacion previa del borrador esta en
     docs/contracts/t1.0-backend-validation.md). NestJS es el unico punto de entrada de canales:
     resuelve tenant, identidad y rol, y llama a este servicio.
@@ -34,6 +34,8 @@ info:
     corrige el timeout real del backend (25000 ms).
     v0.6.2: `timezone` documenta su papel como senal del acople de zona horaria (J-06, ADR 0016) y se aclara
     que los tres campos de contexto (`locale`/`timezone`/`now`) son informativos y no deciden nada.
+    v0.6.3: el `Problem` documenta que `detail` es el texto que ve la clienta (catalogo cerrado, ADR 0017) y
+    anade la propiedad estable `code`; el 429 mantiene `scope`/`measure`/`measured`/`limit`/`window`.
 servers:
   - url: http://localhost:8000
 paths:
@@ -224,7 +226,19 @@ components:
         type: { type: string, format: uri }
         title: { type: string }
         status: { type: integer }
-        detail: { type: string }
+        detail:
+          type: string
+          description: >-
+            Texto APTO PARA LA CLIENTA (ADR 0017): NestJS lo reenvia al widget tal cual como mensaje, asi que
+            nunca lleva jerga interna, identificadores ni referencias al roadmap. Sale de un catalogo cerrado en
+            saaspa-IA (`ProblemCode`); el motivo tecnico se registra en el log de este servicio.
+        code:
+          type: string
+          description: >-
+            Codigo estable del error (ADR 0017), hoy: TURN_CONTEXT_MISMATCH, INVALID_BODY, MALFORMED_BODY,
+            UNAUTHENTICATED, ACCESS_DENIED, TENANT_NOT_ALLOWED, COST_LIMIT, AGENT_NOT_IMPLEMENTED,
+            BACKEND_UNAVAILABLE, BACKEND_ERROR, MODEL_TIMEOUT y UNEXPECTED. NestJS puede decidir por codigo en
+            vez de por el texto, y es el ancla de los casos de conformidad entre repos (J-13).
         instance: { type: string, format: uri }
         turnId:
           type: string

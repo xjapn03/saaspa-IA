@@ -2,6 +2,7 @@ package com.juanp.saaspa.ia.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -172,7 +173,7 @@ class ChatControllerTest {
 
 	@Test
 	@DisplayName("rechaza un cuerpo que no coincide con el turn token")
-	void rejectsContextMismatch() throws Exception {
+	void rejectsContextMismatch(CapturedOutput output) throws Exception {
 		this.mockMvc.perform(post("/api/v1/chat").header(ServiceKeyVerifier.HEADER, SERVICE_KEY)
 				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
 				.contentType(MediaType.APPLICATION_JSON)
@@ -180,7 +181,14 @@ class ChatControllerTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 				.andExpect(jsonPath("$.status").value(400))
-				.andExpect(jsonPath("$.detail").value(containsString("tenantId")));
+				// El texto que ve la clienta es publico; el motivo tecnico (que campo no cuadro) queda en el log.
+				.andExpect(jsonPath("$.detail")
+						.value("No pudimos identificar tu conversacion; recarga la pagina e intenta de nuevo"))
+				.andExpect(jsonPath("$.code").value("TURN_CONTEXT_MISMATCH"))
+				.andExpect(jsonPath("$.detail").value(not(containsString("tenantId"))));
+
+		// El diagnostico no se pierde: el motivo tecnico (que campo no cuadro) queda en el log.
+		assertThat(output.toString()).contains("Turno con contexto invalido").contains("tenantId");
 
 		then(this.customerAgent).shouldHaveNoInteractions();
 		then(this.turnLogService).shouldHaveNoInteractions();
@@ -195,7 +203,8 @@ class ChatControllerTest {
 				.content(requestJson("otro-tenant", "CLIENTAS", "Que servicios tienen?")))
 				.andExpect(status().isForbidden())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-				.andExpect(jsonPath("$.title").value("Tenant no permitido"));
+				.andExpect(jsonPath("$.title").value("Peticion no permitida"))
+				.andExpect(jsonPath("$.code").value("TENANT_NOT_ALLOWED"));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
 		then(this.turnLogService).shouldHaveNoInteractions();
@@ -209,7 +218,9 @@ class ChatControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(requestJson("kamerinos", "ADMIN", "Hola")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.detail").value(containsString("agent")));
+				.andExpect(jsonPath("$.code").value("TURN_CONTEXT_MISMATCH"))
+				.andExpect(jsonPath("$.detail")
+						.value("No pudimos identificar tu conversacion; recarga la pagina e intenta de nuevo"));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
 	}
@@ -222,7 +233,8 @@ class ChatControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(requestJson("kamerinos", "ADMIN", "Cuanto vendimos hoy?")))
 				.andExpect(status().isNotImplemented())
-				.andExpect(jsonPath("$.title").value("No implementado"));
+				.andExpect(jsonPath("$.title").value("No implementado"))
+				.andExpect(jsonPath("$.code").value("AGENT_NOT_IMPLEMENTED"));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
 	}
@@ -235,6 +247,7 @@ class ChatControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(requestJson("kamerinos", "CLIENTAS", "")))
 				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_BODY"))
 				.andExpect(jsonPath("$.errors[0]", containsString("message.text")));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
@@ -255,7 +268,8 @@ class ChatControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(body))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.detail").value(containsString("identidad")));
+				.andExpect(jsonPath("$.code").value("TURN_CONTEXT_MISMATCH"))
+				.andExpect(jsonPath("$.detail").value(not(containsString("identidad"))));
 
 		then(this.customerAgent).shouldHaveNoInteractions();
 	}
@@ -297,6 +311,7 @@ class ChatControllerTest {
 				.andExpect(status().isTooManyRequests())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 				.andExpect(jsonPath("$.title").value("Limite de uso alcanzado"))
+				.andExpect(jsonPath("$.code").value("COST_LIMIT"))
 				.andExpect(jsonPath("$.scope").value("conversation"))
 				.andExpect(jsonPath("$.measure").value("turns"))
 				.andExpect(jsonPath("$.measured").value(30))
@@ -322,7 +337,8 @@ class ChatControllerTest {
 				.content(requestJson("kamerinos", "CLIENTAS", "Que servicios tienen?")))
 				.andExpect(status().isBadGateway())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-				.andExpect(jsonPath("$.title").value("Sistema de agenda no disponible"));
+				.andExpect(jsonPath("$.title").value("Sistema de agenda no disponible"))
+				.andExpect(jsonPath("$.code").value("BACKEND_UNAVAILABLE"));
 
 		// H-05/ADR 0015: el modelo ya se llamo, asi que el turno gasto presupuesto y tiene que dejar
 		// fila con su codigo de error; si no, el tope de coste mediria menos de lo que cree.
@@ -360,7 +376,8 @@ class ChatControllerTest {
 				.header("Authorization", bearer(claims("CLIENTAS", "kamerinos")))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(requestJson("kamerinos", "CLIENTAS", "Que servicios tienen?")))
-				.andExpect(status().isInternalServerError());
+				.andExpect(status().isInternalServerError())
+				.andExpect(jsonPath("$.code").value("UNEXPECTED"));
 
 		TurnLogService.TurnLog row = capturedTurnLog();
 		assertThat(row.status()).isEqualTo(TurnLogService.Status.ERROR);
@@ -383,6 +400,7 @@ class ChatControllerTest {
 				.andExpect(status().isGatewayTimeout())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 				.andExpect(jsonPath("$.title").value("Modelo no disponible"))
+				.andExpect(jsonPath("$.code").value("MODEL_TIMEOUT"))
 				.andExpect(jsonPath("$.turnId").value(TURN_ID.toString()));
 
 		// A-08/ADR 0014: el turno cortado por el deadline deja fila, con estado DEADLINE.
