@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: saaspa-backend - Web Chat API (Frontend -> NestJS)
-  version: 0.3.0
+  version: 0.4.0
   description: >-
-    Contrato IMPLEMENTADO v0.3.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
+    Contrato IMPLEMENTADO v0.4.0. Reconciliado contra saaspa-backend@develop (9fc8b12) el 2026-09-26
     (informe: docs/contracts/f1-e2e-validation.md; la validacion del borrador esta en
     docs/contracts/t1.0-backend-validation.md). Implementado en src/modules/chat/chat.controller.ts
     y src/modules/chat/chat.service.ts (POST /api/chat, @Public(), 200).
@@ -25,6 +25,12 @@ info:
     puede retomar la conversacion.
     v0.3.0: el 429 incluye el tope de coste del asistente (scope tenant|conversation|origin, H-04 ya
     preserva ese 429) y el 504 cita el timeout real del backend (IA_BOT_TIMEOUT_MS = 25000 ms).
+    v0.4.0 (J-07, verificado contra el codigo fusionado del backend: `ProblemDetailsFilter` y
+    `problem-extensions.ts`): los errores de los endpoints de chat SI son RFC 9457
+    (`application/problem+json` con `type` = `about:blank`, `title` por estado, `status`, `detail` e
+    `instance`), con las extensiones del tope (`scope`/`measure`/`measured`/`limit`/`window`) solo en el
+    429 de coste; se declaran 400/403/413/429/502/504 con ese media type. La propiedad `code` de
+    saaspa-IA **no** se reenvia al widget: existe solo en el tramo IA -> backend (`chat-api`).
 servers:
   - url: https://kamerinos.sandrapinzonsaludybelleza.com.co
 paths:
@@ -54,27 +60,43 @@ paths:
         '400':
           description: Cuerpo invalido (mensaje vacio, con formato incorrecto o campos desconocidos)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '403':
           description: >-
             El conversationId no pertenece a esta sesion (o a este tenant): la conversacion no se
             puede continuar desde otra sesion
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '413':
           description: Mensaje demasiado largo (mas de 1000 caracteres; MAX_MESSAGE_LENGTH)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '429':
           description: >-
             Limite alcanzado: 20 peticiones por minuto y por IP (Throttler); tope de 30 mensajes por hora en
             la sesion anonima; o **tope de coste del asistente** (ADR 0010 y ADR 0020 de saaspa-IA: turnos o
             tokens por ventana, por tenant, por conversacion o por origen del turno, con `scope`
             tenant|conversation|origin y `measure` turns|tokens). El 429 del asistente se preserva tal cual
-            hacia el widget (H-04): la clienta puede esperar y reintentar.
+            hacia el widget (H-04): la clienta puede esperar y reintentar. Es el unico estado que puede traer
+            las extensiones del tope.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '502':
           description: >-
             saaspa-IA devolvio un error no clasificado (el backend lo mapea a Bad Gateway) o no esta
             disponible
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '504':
           description: saaspa-IA no respondio dentro de IA_BOT_TIMEOUT_MS (25000 ms por defecto)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 components:
   securitySchemes:
     sessionCookie:
@@ -150,12 +172,53 @@ components:
             tokensOut: { type: integer }
     Problem:
       type: object
-      properties:
-        type: { type: string, format: uri }
-        title: { type: string }
-        status: { type: integer }
-        detail: { type: string }
-        instance: { type: string, format: uri }
+      required: [type, title, status, detail]
       description: >-
-        Formato de error de saaspa-IA (RFC 9457). El backend hoy responde
-        {statusCode, message, error}; si NestJS reenvia el error de IA, debe mapearlo.
+        RFC 9457 (`application/problem+json`) para los endpoints de chat: son los unicos cuyo contrato declara
+        ese formato (J-07). Lo produce el `ProblemDetailsFilter` del backend, que es `@Catch()`: cualquier
+        error de estos endpoints sale asi, incluidos el 500 de un fallo inesperado (`detail` generico y la
+        traza en los logs del backend, nunca en la respuesta) y el 501 si el agente pedido no existe todavia.
+        El resto del API conserva la forma por defecto de NestJS (`{statusCode, message, error}`).
+        `detail` es el texto que lee la clienta: el backend lo reenvia del `detail` de saaspa-IA (que sale de
+        un catalogo cerrado, ADR 0017 de ese repo) o lo escribe el mismo. Las extensiones del tope de coste
+        solo aparecen cuando el error es de ese tope (429).
+        **La propiedad `code` de saaspa-IA NO viaja aqui**: existe solo en el tramo IA -> backend
+        (`chat-api.openapi.yaml`) y este filtro copia unicamente las cinco extensiones documentadas.
+      properties:
+        type:
+          type: string
+          format: uri
+          description: >-
+            Hoy siempre `about:blank` (no hay registro de tipos): con ese valor, RFC 9457 dice que `title`
+            describe el estado.
+        title:
+          type: string
+          description: >-
+            Frase corta por estado (no es el mensaje de la clienta, que va en `detail`): hoy 400 "Solicitud
+            incorrecta", 403 "No autorizado", 413 "Contenido demasiado grande", 429 "Demasiadas solicitudes",
+            502 "Pasarela incorrecta" y 504 "Tiempo de espera agotado".
+        status: { type: integer }
+        detail:
+          type: string
+          description: Texto especifico del error, apto para mostrarse a la clienta (catalogo de ADR 0017).
+        instance:
+          type: string
+          format: uri
+          description: Ruta de la peticion que fallo (por ejemplo `/api/chat`).
+        scope:
+          type: string
+          enum: [tenant, conversation, origin]
+          description: Extension del tope de coste (solo en el 429 de ese tope, ADR 0010 y ADR 0020).
+        measure:
+          type: string
+          enum: [turns, tokens]
+          description: Extension del tope de coste (solo en el 429 de ese tope).
+        measured:
+          type: integer
+          description: Consumo medido en la ventana, en la medida de `measure` (solo en el 429 del tope).
+        limit:
+          type: integer
+          description: Limite configurado que se alcanzo (solo en el 429 del tope).
+        window:
+          type: string
+          description: Ventana del tope en duracion ISO-8601, por ejemplo `PT1H` (solo en el 429 del tope).
