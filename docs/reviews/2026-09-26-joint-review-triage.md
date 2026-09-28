@@ -189,6 +189,16 @@
 - *ADR:* **0017** (contrato de error end-to-end y frontera entre error interno y mensaje a la clienta).
 - *Checklist:* Fase 2, «misma pasada».
 - *Rama:* **requiere coordinación con saaspa-backend, no fusionar de un solo lado.**
+- **Resuelto en la mitad de este repo (2026-09-26, ADR 0017, rama
+  `fix/j07-error-contract-and-client-facing-detail`):** no hizo falta coordinar para lo esencial. `ProblemCode`
+  cierra el catálogo de errores: el `detail` es **siempre** apto para la clienta (el gateway lo reenvía tal
+  cual), el motivo técnico se queda en el log, el manejador de seguridad **registra** los rechazos (antes no
+  dejaba rastro) y el `ProblemDetail` lleva un `code` estable. `internal-api` pasa a describir la forma real de
+  NestJS (`NestError`, v0.3.1) y `chat-api` documenta el `code` (v0.6.3). **`web-chat-api` NO se toca a
+  propósito**: `saaspa-backend` está implementando `problem+json` real en su `ChatController` público, así que
+  ese contrato se corregirá para **confirmar `Problem`** cuando se fusione ese PR (no para revertirlo a
+  `NestError`). El pedido de que el gateway registre `detail`+`code` y decida el texto de la clienta queda en
+  §11.5 como baja prioridad y **sin enviar**.
 
 ### Ola 4 — pueden esperar
 
