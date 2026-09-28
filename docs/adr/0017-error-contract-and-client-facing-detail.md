@@ -58,11 +58,17 @@ servidor no produce.
 
 4. **Cada contrato dice la verdad en su dirección.** `chat-api` mantiene RFC 9457 (lo sirve este servicio) y
    documenta el `code`; `internal-api` **v0.3.1** describe el `NestError` real del backend
-   (`{statusCode, message, error}`) y explica que el cliente de este servicio lo mapea a sus excepciones.
-   `web-chat-api` queda **pendiente a propósito**: `saaspa-backend` está implementando `problem+json` real
-   para su `ChatController` público (con las extensiones `scope`/`measure`/`measured`/`limit`/`window`); cuando
-   fusione, ese contrato se corregirá para **confirmar `Problem`** —con el catálogo de `code` integrado— y no
-   para revertirlo a la forma de NestJS. Hasta entonces **no se toca**.
+   (`{statusCode, message, error}`) y explica que el cliente de este servicio lo mapea a sus excepciones. Y
+   `web-chat-api` **v0.4.0** (2026-09-26) **confirma RFC 9457** para los errores del chat, con el
+   `problem+json` del backend ya fusionado y **verificado leyendo su código**
+   (`src/common/filters/problem-details.filter.ts` y `src/common/http/problem-extensions.ts`), no su PR: el
+   filtro es `@Catch()` y se aplica solo a los endpoints de chat (el resto del API conserva la forma de
+   NestJS), emite `type` (`about:blank`), `title` por estado, `status`, `detail` (nuestro texto público) e
+   `instance`, y copia **solo** las cinco extensiones del tope cuando vienen.
+   **Matiz:** el `code` que añade este servicio **no** se reenvía al widget —el filtro ignora a propósito
+   cualquier miembro no documentado—, así que `code` existe **solo en el tramo IA → backend** y el widget
+   distingue por `status` y prosa. Que el backend lo reenvíe (añadiéndolo a `PROBLEM_EXTENSIONS`) es una
+   **mejora opcional de baja prioridad**, documentada en §11.5 y **no enviada**.
 
 5. **Reparto de responsabilidades (la frontera).** Nosotros garantizamos que `detail` es apto para una clienta
    y damos un `code` estable; el gateway decide si reenvía nuestro texto o pone el suyo, y registra nuestro
