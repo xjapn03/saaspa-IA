@@ -1,12 +1,14 @@
 openapi: 3.1.0
 info:
   title: NestJS Internal API (IA -> NestJS)
-  version: 0.3.0
+  version: 0.3.1
   description: >-
-    Contrato v0.3.0 (Fase 1 IMPLEMENTADA). Reconciliado contra saaspa-backend@develop (9fc8b12) el
+    Contrato v0.3.1 (Fase 1 IMPLEMENTADA). Reconciliado contra saaspa-backend@develop (9fc8b12) el
     2026-09-26 (informe: docs/contracts/f1-e2e-validation.md; la validacion del borrador v0.2.0 esta
     en docs/contracts/t1.0-backend-validation.md). Los endpoints de Fase 1 ya existen en el backend
     (src/modules/internal/); los de Fase 2/3/4 siguen siendo pedidos.
+    v0.3.1 (J-07, ADR 0017): el esquema de error pasa a describir lo que el backend responde de verdad
+    (el formato por defecto de NestJS, `NestError`), en vez de un ProblemDetail que no implementa.
     Endpoints implementados: GET /api/internal/v1/services (paginado, espejo del catalogo publico),
     GET /api/internal/v1/services/{idOrSlug} (UUID o slug) y GET /api/internal/v1/availability?serviceId&date
     (un dia; devuelve offset explicito y timezone). Los tres van con @SkipThrottle() y
@@ -222,30 +224,31 @@ components:
       description: Clave de servicio o turn token ausente, invalido o expirado
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Problem' }
+          schema: { $ref: '#/components/schemas/NestError' }
     Forbidden:
       description: >-
         El tenantId del turn token no es el TENANT_ID del backend (ForbiddenException 'Tenant no permitido')
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Problem' }
+          schema: { $ref: '#/components/schemas/NestError' }
     NotFound:
       description: Recurso no encontrado
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Problem' }
+          schema: { $ref: '#/components/schemas/NestError' }
   schemas:
-    Problem:
+    NestError:
       type: object
       description: >-
-        Formato de error de saaspa-IA (RFC 9457). El backend hoy responde
-        {statusCode, message, error}; el cliente de este servicio debe mapearlo.
+        Formato de error REAL del backend: el por defecto de NestJS (no es RFC 9457). `statusCode` es el estado
+        HTTP, `message` el texto del error y `error` el nombre corto del estado. El cliente de este servicio
+        (BackendClient) mapea este cuerpo a BackendException/BackendUnavailableException y no lo propaga tal
+        cual: responde a NestJS con su propio ProblemDetail (RFC 9457, ADR 0017). Nota: los errores de
+        saaspa-IA hacia NestJS SI son RFC 9457 (ver chat-api.openapi.yaml).
       properties:
-        type: { type: string, format: uri }
-        title: { type: string }
-        status: { type: integer }
-        detail: { type: string }
-        instance: { type: string, format: uri }
+        statusCode: { type: integer }
+        message: { type: string }
+        error: { type: string }
     Category:
       type: object
       properties:
