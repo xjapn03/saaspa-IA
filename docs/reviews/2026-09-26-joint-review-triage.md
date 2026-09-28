@@ -199,6 +199,14 @@
   ese contrato se corregirá para **confirmar `Problem`** cuando se fusione ese PR (no para revertirlo a
   `NestError`). El pedido de que el gateway registre `detail`+`code` y decida el texto de la clienta queda en
   §11.5 como baja prioridad y **sin enviar**.
+- **Cierre (2026-09-26, rama `docs/web-chat-api-problem-json`):** con el PR #85 del backend ya fusionado, su
+  `ProblemDetailsFilter` **confirma** que los errores de los endpoints de chat son RFC 9457, así que
+  `web-chat-api` **v0.4.0** corrige el media type (`application/problem+json`), el esquema (`type` =
+  `about:blank`, `title` por estado, `status`, `detail`, `instance` y las cinco extensiones del tope) y la
+  lista de estados (400/403/413/429/502/504, como pidió su §9). Verificado **leyendo su código fusionado**, no
+  su PR. Y un matiz que no se puede documentar como si fuera visible: **el backend no reenvía el `code`** al
+  widget (copia solo las cinco extensiones), así que ese campo existe únicamente en el tramo IA → backend;
+  reenviarlo queda como **mejora opcional de baja prioridad** en §11.5, **sin enviar**.
 
 ### Ola 4 — pueden esperar
 
