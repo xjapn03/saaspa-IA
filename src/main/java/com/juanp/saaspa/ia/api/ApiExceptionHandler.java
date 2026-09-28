@@ -5,7 +5,6 @@ import java.util.Locale;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
@@ -20,8 +19,10 @@ import com.juanp.saaspa.ia.usage.CostLimitExceededException;
 /**
  * Errores de la API con {@link ProblemDetail} (RFC 9457), el formato del contrato de chat.
  *
- * <p>Los mensajes son genericos a proposito: no revelan detalles internos, no incluyen el token ni
- * datos personales (regla R8) y los fallos inesperados solo se registran por tipo de excepcion.
+ * <p>El texto que responde cada caso sale de {@link ProblemCode}: es el que el backend reenvia al widget, asi
+ * que tiene que ser apto para la clienta (ADR 0017). El <strong>motivo tecnico</strong> —que campo no cuadro,
+ * que fallo el backend, que excepcion se lanzo— se registra en el log y nunca se pone en el cuerpo (R8): los
+ * logs solo llevan el mensaje tecnico o el tipo de excepcion, sin token ni datos personales.
  */
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -30,7 +31,10 @@ public class ApiExceptionHandler {
 
 	@ExceptionHandler(InvalidTurnContextException.class)
 	public ProblemDetail invalidTurnContext(InvalidTurnContextException exception) {
-		return problem(HttpStatus.BAD_REQUEST, "Peticion invalida", exception.getMessage());
+		// El mensaje de la excepcion nombra campos internos (tenantId, conversationId...): sirve para el
+		// log, no para la clienta.
+		log.warn("Turno con contexto invalido: {}", exception.getMessage());
+		return problem(ProblemCode.TURN_CONTEXT_MISMATCH);
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
@@ -38,41 +42,42 @@ public class ApiExceptionHandler {
 		List<String> errors = exception.getBindingResult().getFieldErrors().stream()
 				.map(error -> error.getField() + ": " + error.getDefaultMessage())
 				.toList();
-		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Peticion invalida",
-				"El cuerpo de la peticion no es valido");
+		// Los nombres de campo y los mensajes de validacion son tecnicos: van al log y a `errors`, nunca al
+		// `detail`, que es lo que lee la clienta.
+		log.warn("Turno con cuerpo invalido: {}", errors);
+		ProblemDetail problem = problem(ProblemCode.INVALID_BODY);
 		problem.setProperty("errors", errors);
 		return problem;
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
 	public ProblemDetail unreadableBody(HttpMessageNotReadableException exception) {
-		return problem(HttpStatus.BAD_REQUEST, "Peticion invalida", "El cuerpo de la peticion no es JSON valido");
+		log.warn("Turno con cuerpo no interpretable: {}", exception.getClass().getSimpleName());
+		return problem(ProblemCode.MALFORMED_BODY);
 	}
 
 	@ExceptionHandler(UnsupportedAgentException.class)
 	public ProblemDetail unsupportedAgent(UnsupportedAgentException exception) {
-		return problem(HttpStatus.NOT_IMPLEMENTED, "No implementado", exception.getMessage());
+		log.warn("Turno para un agente no implementado: {}", exception.getMessage());
+		return problem(ProblemCode.AGENT_NOT_IMPLEMENTED);
 	}
 
 	@ExceptionHandler(BackendUnavailableException.class)
 	public ProblemDetail backendUnavailable(BackendUnavailableException exception) {
 		log.warn("Turno sin respuesta del backend: {}", exception.getClass().getSimpleName());
-		return problem(HttpStatus.BAD_GATEWAY, "Sistema de agenda no disponible",
-				"El sistema de agenda no respondio; intenta de nuevo en un momento");
+		return problem(ProblemCode.BACKEND_UNAVAILABLE);
 	}
 
 	@ExceptionHandler(BackendException.class)
 	public ProblemDetail backendError(BackendException exception) {
 		log.warn("Turno con error del backend: {}", exception.getClass().getSimpleName());
-		return problem(HttpStatus.BAD_GATEWAY, "Sistema de agenda no disponible",
-				"El sistema de agenda no pudo responder la consulta");
+		return problem(ProblemCode.BACKEND_ERROR);
 	}
 
 	@ExceptionHandler(LlmTimeoutException.class)
 	public ProblemDetail llmTimeout(LlmTimeoutException exception) {
 		log.warn("Turno sin respuesta del modelo: {}", exception.getClass().getSimpleName());
-		ProblemDetail problem = problem(HttpStatus.GATEWAY_TIMEOUT, "Modelo no disponible",
-				"El modelo no respondio a tiempo; intenta de nuevo en un momento");
+		ProblemDetail problem = problem(ProblemCode.MODEL_TIMEOUT);
 		if (exception.turnId() != null) {
 			// ADR 0014: el turnId correlaciona este 504 con la fila DEADLINE de ia.turn_log y con NestJS.
 			problem.setProperty("turnId", exception.turnId());
@@ -83,8 +88,7 @@ public class ApiExceptionHandler {
 	@ExceptionHandler(CostLimitExceededException.class)
 	public ProblemDetail costLimitExceeded(CostLimitExceededException exception) {
 		log.warn("Turno rechazado por el tope de coste: {} {}", exception.scope(), exception.measure());
-		ProblemDetail problem = problem(HttpStatus.TOO_MANY_REQUESTS, "Limite de uso alcanzado",
-				"Se alcanzo el limite de uso de este asistente; intenta de nuevo mas tarde");
+		ProblemDetail problem = problem(ProblemCode.COST_LIMIT);
 		// ADR 0010: el ambito y la medida no son PII y ayudan a diagnosticar (y a calibrar en la Fase 5).
 		problem.setProperty("scope", exception.scope().name().toLowerCase(Locale.ROOT));
 		problem.setProperty("measure", exception.measure().name().toLowerCase(Locale.ROOT));
@@ -96,25 +100,26 @@ public class ApiExceptionHandler {
 
 	@ExceptionHandler(TenantNotAllowedException.class)
 	public ProblemDetail tenantNotAllowed(TenantNotAllowedException exception) {
-		return problem(HttpStatus.FORBIDDEN, "Tenant no permitido",
-				"El tenant del turno no esta permitido en este servicio");
+		log.warn("Turno de un tenant no permitido (A-03)");
+		return problem(ProblemCode.TENANT_NOT_ALLOWED);
 	}
 
 	@ExceptionHandler(AuthenticationException.class)
 	public ProblemDetail unauthenticated(AuthenticationException exception) {
-		return problem(HttpStatus.UNAUTHORIZED, "No autorizado", "Falta el turn token o no es valido");
+		log.warn("Peticion sin autenticar: {}", exception.getClass().getSimpleName());
+		return problem(ProblemCode.UNAUTHENTICATED);
 	}
 
 	@ExceptionHandler(Exception.class)
 	public ProblemDetail unexpected(Exception exception) {
 		log.error("Turno con error inesperado: {}", exception.getClass().getSimpleName());
-		return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno",
-				"Ocurrio un error inesperado atendiendo el turno");
+		return problem(ProblemCode.UNEXPECTED);
 	}
 
-	private static ProblemDetail problem(HttpStatus status, String title, String detail) {
-		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-		problem.setTitle(title);
+	private static ProblemDetail problem(ProblemCode code) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(code.status(), code.publicDetail());
+		problem.setTitle(code.title());
+		problem.setProperty("code", code.name());
 		return problem;
 	}
 }
