@@ -101,9 +101,10 @@ saaspa:
     # anonimo esta cubierto; evidencia en docs/contracts/h04-origin-claim-validation.md. Ni el usuario ni la IP
     # se pueden rotar.
     origin-max-turns: ${IA_COST_GUARD_ORIGIN_MAX_TURNS:60}
-    # Sal del hash con el que se guarda el origen en `ia.turn_log` (nunca la IP en claro). OBLIGATORIA en
-    # produccion: sin ella el tope por origen funciona igual, pero el hash de una IP se puede revertir por
-    # fuerza bruta desde la tabla (se avisa al arrancar).
+    # Sal del hash con el que se guarda el origen en `ia.turn_log` (nunca la IP en claro). Fallo cerrado
+    # (HN-01): fuera del perfil local el ARRANQUE FALLA si la sal falta, esta en blanco, mide menos de 16
+    # caracteres o es la constante legada del repo (con ella una IP se revertia por fuerza bruta). En local
+    # sin sal se genera una aleatoria por proceso. Genera el valor con: openssl rand -hex 32.
     origin-salt: ${IA_COST_GUARD_ORIGIN_SALT:}
   llm:
     # Timeouts del cliente HTTP hacia el modelo (ADR 0009). Aparte del cliente del backend.

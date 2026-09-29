@@ -27,7 +27,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Registro durable real sobre PostgreSQL (T1.6): esquema {@code ia} creado por Flyway, aislamiento por
  * tenant (R5), JSON valido y tolerancia a fallos de la base.
  */
-@SpringBootTest(properties = "spring.ai.deepseek.api-key=test-key")
+@SpringBootTest(properties = { "spring.ai.deepseek.api-key=test-key",
+		"saaspa.cost-guard.origin-salt=test-origin-salt" })
 @Import(TestcontainersConfiguration.class)
 class UsageLoggingTest {
 

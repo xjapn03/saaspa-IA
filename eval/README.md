@@ -46,4 +46,10 @@ ignoran.
   corren en `./mvnw -B verify`.
 - **Evaluación con un LLM real (aparte, R14)**: el runner es `CustomerAgentEvaluator`. Se le pasa el
   `CustomerAgent` real y el dataset; el LLM-as-a-Judge y el informe reproducible llegan en la Fase 5.
-  No se ejecuta en CI (cuesta tokens).
+  No se ejecuta en CI (cuesta tokens). **Arranca con la sal puesta (HN-01):** no existe un perfil `eval`
+  de Spring todavía (no hay `application-eval.yml`), y cuando exista en la Fase 5 **no será `local`**, así
+  que el fallo cerrado de `IA_COST_GUARD_ORIGIN_SALT` le aplica igual: la evaluación real corre fuera del
+  perfil `local` y **sin la variable el contexto no arranca**. Se define en el entorno del proceso con
+  cualquier valor generado de 16+ caracteres (p. ej. `openssl rand -hex 32`); el hash de origen no afecta
+  al resultado de la evaluación, la variable solo tiene que estar. En el build normal no cambia nada: los
+  tests ya llevan su sal de prueba explícita (`saaspa.cost-guard.origin-salt=test-origin-salt`).

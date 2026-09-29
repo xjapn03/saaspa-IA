@@ -29,7 +29,8 @@ import com.juanp.saaspa.ia.TestcontainersConfiguration;
  * Cadena de seguridad completa (T1.1): clave de servicio de entrada, turn token verificado,
  * respuestas {@code ProblemDetail} y rutas abiertas.
  */
-@SpringBootTest(properties = "spring.ai.deepseek.api-key=test-key")
+@SpringBootTest(properties = { "spring.ai.deepseek.api-key=test-key",
+		"saaspa.cost-guard.origin-salt=test-origin-salt" })
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, ChatApiSecurityTest.TestChatController.class })
 class ChatApiSecurityTest {
