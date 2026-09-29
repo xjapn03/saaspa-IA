@@ -3,9 +3,13 @@
 - **Estado:** Aceptada (2026-09-26)
 - **Fecha:** 2026-09-26
 - **Origen:** hallazgo **J-05** del informe conjunto; ola 1 del triaje.
-- **Implementación:** pendiente y **casi toda del backend** (el aviso por correo, la captura del texto del turno
-  derivado, la reversibilidad y la acción de reapertura). De este lado solo queda el registro del turno con
-  handoff (C-13), que se resuelve junto con la memoria en la Fase 2.
+- **Implementación:** **la mitad del backend está hecha y verificada** (correo al staff con motivo,
+  conversación, turno, si es anónima o registrada y el **texto del turno derivado** —capturado por el
+  backend, como exige esta ADR—, cierre reversible por `PATCH /chat/conversations/:id/handoff` con roles y
+  auditoría, y entrega con reintento del aviso: H-03, su PR #82; evidencia archivo:línea en el informe #3,
+  `docs/reviews/2026-09-28-joint-integration-review-3.md`, §3, fila J-05). De este lado queda el registro
+  del turno con handoff en la memoria (C-13), que se resuelve junto con la memoria en la Fase 2. **Nota de
+  estado únicamente: la decisión de esta ADR no cambia.**
 - **Coordinación:** **requiere coordinación con saaspa-backend, no fusionar de un solo lado** (el estado, la
   notificación y la vista son suyos; el registro y el contrato son parcialmente nuestros).
 - **Base:** A-10a, ya resuelto (el estado del handoff vive en NestJS y el bot no retoma la conversación).
