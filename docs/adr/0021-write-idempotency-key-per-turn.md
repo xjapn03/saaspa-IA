@@ -79,8 +79,10 @@
 - ADR 0008 (política de escritura), ADR 0012 (identidad e idempotencia, punto 4), ADR 0014 (plazos del turno).
 - Tercera revisión conjunta, §5.3 (restricciones) y §6 (paso 3):
   `docs/reviews/2026-09-28-joint-integration-review-3.md`.
-- `docs/contracts/internal-api.openapi.yaml` v0.5.0 (endpoints de escritura con la cabecera obligatoria y la
-  validacion de offset).
-- PRs #87 y #88 de `saaspa-backend` (abiertos al 2026-09-28): #87 implementa `misCitas` con la paginación
-  `page`/`limit` que el contrato recoge; #88 registra el diseño aceptado con los códigos propuestos
-  (`SLOT_TAKEN`/`PENDING_CAP_REACHED`/`BOOKING_EXPIRED`) y la carrera concurrente como decisión pendiente.
+- `docs/contracts/internal-api.openapi.yaml` v0.6.0 (endpoints de escritura con la cabecera obligatoria, la
+  validacion de offset y el 400 con `INVALID_SLOT`, mas `misCitas` con `upcoming`/`hasMore`).
+- PRs #87 y #88 de `saaspa-backend` (**fusionados el 2026-09-29**; verificados leyendo su código en
+  `develop@8015112`): #87 implementa `misCitas` con `page`/`limit`/`upcoming` y `hasMore` en la respuesta;
+  #88 registra el diseño aceptado con los códigos propuestos (`SLOT_TAKEN`/`PENDING_CAP_REACHED` en 409,
+  `INVALID_SLOT` en 400, `BOOKING_EXPIRED` en la cancelación) y la carrera concurrente **sigue como
+  decisión pendiente** antes de `crearCita` (sin constraint de exclusión ni `SET NX` en su código).
