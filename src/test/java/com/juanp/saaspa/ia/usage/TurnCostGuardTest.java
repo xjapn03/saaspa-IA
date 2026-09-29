@@ -32,7 +32,7 @@ import com.juanp.saaspa.ia.usage.CostLimitExceededException.Scope;
 @SpringBootTest(properties = { "spring.ai.deepseek.api-key=test-key", "saaspa.cost-guard.window=1h",
 		"saaspa.cost-guard.tenant-max-turns=5", "saaspa.cost-guard.tenant-max-tokens=10000",
 		"saaspa.cost-guard.conversation-max-turns=3", "saaspa.cost-guard.conversation-max-tokens=5000",
-		"saaspa.cost-guard.origin-max-turns=4" })
+		"saaspa.cost-guard.origin-max-turns=4", "saaspa.cost-guard.origin-salt=test-origin-salt" })
 @Import(TestcontainersConfiguration.class)
 class TurnCostGuardTest {
 

@@ -56,7 +56,8 @@ import tools.jackson.databind.ObjectMapper;
  * herramienta, la herramienta se ejecuta de verdad contra el backend (WireMock) y el turno y la tool
  * call quedan registrados en el esquema {@code ia}. Ningun test llama a un LLM real (R14).
  */
-@SpringBootTest(properties = { "spring.ai.deepseek.api-key=test-key" })
+@SpringBootTest(properties = { "spring.ai.deepseek.api-key=test-key",
+		"saaspa.cost-guard.origin-salt=test-origin-salt" })
 @Import({ TestcontainersConfiguration.class, TurnToolIntegrationTest.ScriptedModelConfig.class })
 class TurnToolIntegrationTest {
 

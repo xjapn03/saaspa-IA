@@ -3,6 +3,8 @@ package com.juanp.saaspa.ia.usage;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.juanp.saaspa.ia.config.CostGuardProperties;
@@ -37,11 +39,14 @@ public class UsageConfig {
 
 	/**
 	 * @param costGuardProperties configuracion del guardia (incluye la sal del hash de origen)
+	 * @param environment para saber si el perfil {@code local} esta activo: el unico en el que la sal puede
+	 *            faltar, porque entonces se genera una aleatoria por proceso (HN-01, ADR 0020)
 	 * @return el hasheador con el que el turno guarda su origen sin almacenar la IP (ADR 0020)
 	 */
 	@Bean
-	public OriginHasher originHasher(CostGuardProperties costGuardProperties) {
-		return new OriginHasher(costGuardProperties.originSalt());
+	public OriginHasher originHasher(CostGuardProperties costGuardProperties, Environment environment) {
+		return OriginHasher.create(costGuardProperties.originSalt(),
+				environment.acceptsProfiles(Profiles.of("local")));
 	}
 
 	@Bean

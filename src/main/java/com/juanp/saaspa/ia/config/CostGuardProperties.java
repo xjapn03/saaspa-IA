@@ -24,8 +24,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param conversationMaxTokens tokens maximos (entrada + salida) por conversacion en la ventana
  * @param originMaxTurns turnos maximos por origen en la ventana (ADR 0020: el usuario si el turno esta
  * identificado, la IP resuelta por el backend si es anonimo)
- * @param originSalt sal del hash con el que se guarda el origen (nunca la IP en claro); obligatoria en
- * produccion
+ * @param originSalt sal del hash con el que se guarda el origen (nunca la IP en claro); obligatoria fuera del
+ * perfil local (HN-01): el arranque falla si falta, esta en blanco, mide menos de 16 caracteres o es la
+ * constante legada del repo; en local sin sal se genera una aleatoria por proceso
  */
 @ConfigurationProperties("saaspa.cost-guard")
 public record CostGuardProperties(

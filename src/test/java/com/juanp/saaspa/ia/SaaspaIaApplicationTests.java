@@ -5,7 +5,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest(properties = {"spring.ai.deepseek.api-key=test-key"})
+@SpringBootTest(properties = {"spring.ai.deepseek.api-key=test-key",
+		"saaspa.cost-guard.origin-salt=test-origin-salt"})
 class SaaspaIaApplicationTests {
 
 	@Test
