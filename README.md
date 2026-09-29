@@ -10,8 +10,10 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 > La evidencia del turno y la reconciliación de los contratos están en
 > [`docs/contracts/f1-e2e-validation.md`](./docs/contracts/f1-e2e-validation.md).
 > La Fase 2 (agenda por chat + cliente logueado) **no está abierta todavía**: espera a que `kamerinos-infra`
-> aplique su parte del hallazgo H-02 (los números de la escalera de plazos y las variables del acople en su
-> compose/`.env`). La parte de este repo —la imagen del contenedor `ia-bot`— ya está (ver "Contenedor").
+> commitee su compose (la escalera de plazos ya está en su árbol de trabajo, sin commitear) y añada las
+> variables del acople a su `.env` (incluida `IA_COST_GUARD_ORIGIN_SALT`, obligatoria desde HN-01: sin ella
+> el contenedor no arranca). La parte de este repo —la imagen del contenedor `ia-bot`— ya está (ver
+> "Contenedor").
 > El plan completo está en [`AI_WhatsApp_SaaS_Roadmap_2026.md`](./AI_WhatsApp_SaaS_Roadmap_2026.md).
 
 ## Qué es (y qué no es)
