@@ -937,6 +937,12 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
       con `scope = origin`**) y el volcado de `ia.turn_log` (`origin_hash` ya no nulo, el mismo hash por origen y
       la IP ausente de la tabla) — `docs/contracts/h04-origin-claim-validation.md`, 2026-09-26. Se decide **no**
       endurecer a fallo cerrado ni recalibrar el 60/h hasta ver tráfico real
+- [x] **HN-01 (tercera revisión conjunta, 2026-09-28):** la sal del hash de origen es obligatoria de verdad:
+      fuera del perfil `local` el arranque **falla** si la sal falta, está en blanco, mide menos de 16
+      caracteres o es la constante legada del repo (vetada y ya ausente como clave del código); en `local`
+      sin sal se genera una aleatoria por proceso (`SecureRandom`) — addendum de la ADR 0020, rama
+      `fix/hn01-origin-salt-fail-closed`. La variable para el despliegue es `IA_COST_GUARD_ORIGIN_SALT`
+      (generar: `openssl rand -hex 32`)
 
 ### Fase 3 — Agente ADMIN + reportes
 - [ ] Agente ADMIN con permisos por rol

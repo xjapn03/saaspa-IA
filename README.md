@@ -70,7 +70,10 @@ sigue siendo el sistema de registro que ejecuta la lógica de negocio.
 
 El `Dockerfile` construye la imagen que usa `kamerinos-infra` (servicio `ia-bot`, **sin puertos publicados**:
 solo lo llama el backend por la red interna). Las credenciales del esquema `ia` se toman de `DATABASE_URL`,
-`DATABASE_USER` y `DATABASE_PASSWORD` (ver `application.yml`).
+`DATABASE_USER` y `DATABASE_PASSWORD` (ver `application.yml`). El contenedor corre **sin perfil** (el
+`Dockerfile` no activa `local`), así que `IA_COST_GUARD_ORIGIN_SALT` es obligatoria incluso en este ejemplo
+manual (HN-01): sin ella el arranque falla. En el despliegue real (`kamerinos-infra`) la variable va en el
+bloque `environment:` del servicio `ia-bot` de su `docker-compose.yml` (su `.env` alimenta la interpolación).
 
 ```bash
 docker build -t saaspa-ia:local .
@@ -81,6 +84,7 @@ docker run --rm --network=host \
   -e DATABASE_URL=jdbc:postgresql://localhost:5433/saaspa_ia \
   -e DATABASE_USER=saaspa -e DATABASE_PASSWORD=saaspa \
   -e LLM_API_KEY=dummy \
+  -e IA_COST_GUARD_ORIGIN_SALT=salt-de-ejemplo-local-no-produccion \
   saaspa-ia:local
 
 curl http://localhost:8000/actuator/health   # {"status":"UP"}

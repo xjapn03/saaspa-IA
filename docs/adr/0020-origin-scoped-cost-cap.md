@@ -96,6 +96,30 @@ coherente con R1 (la identidad no se toma del cuerpo ni de cabeceras que el serv
   mantiene como red de seguridad: si un despliegue dejara de emitir el claim, el tope por origen del canal
   anónimo se apagaría solo, pero el `WARN` del guard y `origin_hash IS NULL` lo delatarían.
 
+## Addendum (2026-09-28, HN-01): la sal pasa a ser obligatoria de verdad
+
+El punto 3 de arriba decía «no reversible sin el secreto» y «la sal es obligatoria en producción», pero nada
+lo exigía: era una afirmación sin dientes. El fallback cuando faltaba la variable era la **constante pública
+`saaspa-ia-origin-sin-sal`**, visible en el propio repo, con lo que el hash de una IP era reversible por
+fuerza bruta desde la tabla en segundos; el aviso al arrancar solo informaba, no cortaba; y ningún despliegue
+la inyectaba (verificado: 0 aciertos en el `.env`/`.env.example` de `kamerinos-infra`). Hallazgo **HN-01** de
+la tercera revisión conjunta (`docs/reviews/2026-09-28-joint-integration-review-3.md`).
+
+Política nueva (implementada en `fix/hn01-origin-salt-fail-closed`):
+
+1. **Fallo cerrado al arrancar** fuera del perfil `local` si la sal falta, está en blanco, mide menos de 16
+   caracteres o es el valor legado `saaspa-ia-origin-sin-sal`, que se veta explícitamente. La constante ya no
+   existe como clave en el código: solo queda como **valor rechazado**, privado.
+2. **En `local` sin sal**: sal aleatoria por proceso (`SecureRandom`, 32 bytes en hex). El desarrollo no
+   necesita secretos y nadie más queda expuesto a una constante pública.
+3. La «variante tolerante» del punto 5 **no cambia**: siempre fue sobre el claim `clientIp` ausente (turno con
+   `origin_hash` nulo, sin cubeta de origen y `WARN` del guard), nunca sobre la sal. La confusión entre las
+   dos tolerancias era parte del hueco; el `WARN` del guard sigue siendo del claim.
+4. **Rotar la sal** cambia el hash de los mismos orígenes: las filas previas de la ventana dejan de sumar en la
+   cubeta de origen, es decir, el conteo de la ventana se reinicia una vez. Aceptable: la rotación es
+   excepcional y puntual, el tope de tenant (que no depende de la sal) sigue protegiendo y el efecto queda
+   acotado a la ventana de 1 h.
+
 ## Referencias
 
 - H-04 en `docs/reviews/2026-09-26-joint-integration-review-2.md`; PR #83 de `saaspa-backend`
