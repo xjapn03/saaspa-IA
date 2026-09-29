@@ -21,8 +21,12 @@
   (`PENDIENTE_PAGO` ocupa) y el segundo intento con el mismo `startTime` recibe 409, no una segunda cita.
   Con eso, el caso que motivaba la clave por intención queda cubierto **sin semántica nueva**. Queda una
   **carrera concurrente** (dos peticiones en vuelo para la misma franja antes de que ninguna confirme),
-  residual y acotada por el tope de reservas pendientes por cuenta (2, PR #77 del backend) y por la vida
-  corta del turn token.
+  que **no está aceptada**: es una **decisión pendiente del backend** antes de abrir la rama de `crearCita`,
+  con la inclinación registrada hacia un **constraint de exclusión en Postgres** (`btree_gist` +
+  `tstzrange` con predicado de los estados que ocupan franja, que además protegería el POST público;
+  alternativa: un `SET NX` real en el hold del slot) — PR #88 de `saaspa-backend`. Mientras se decide, el
+  daño está acotado por H-01 (el segundo pago acaba en `PAGO_TARDE`, nunca dos `CONFIRMADA`) y por el tope
+  de reservas pendientes por cuenta (2, PR #77 del backend).
 
 ## Decisión
 
@@ -35,8 +39,9 @@
    el índice único del backend (patrón ya real en el POST público desde su PR #78).
 3. **Turnos equivalentes en secuencia:** quedan protegidos por el **409 de solape** del backend (evidencia
    arriba), no por la clave. El agente lo traduce a la clienta como «esa franja ya no está disponible».
-4. **Residual aceptado:** la carrera concurrente del contexto. Si se materializa, el resultado es una cita
-   rechazada o, en el peor caso, una cita doble frenada por el tope de pendientes por cuenta.
+4. **Pendiente de decisión (backend), no aceptada:** la carrera concurrente del contexto se decide antes de
+   abrir la rama de `crearCita` (inclinación al **constraint de exclusión**, PR #88 de `saaspa-backend`);
+   hasta entonces queda documentada como conocida y acotada por el tope de pendientes por cuenta.
 
 ## Descartes documentados
 
@@ -53,9 +58,9 @@
 ## Disparador para reabrir la decisión
 
 - Evidencia de citas duplicadas por reintentos (en `ia.tool_call_log`, en el `AuditLog` del backend o por
-  reportes del salón), que la carrera concurrente se materialice, o una herramienta de escritura **sin**
-  protección de solape (p. ej. carrito o pedidos). Con cualquiera de los tres se reabre y se evalúa la clave
-  por intención o el pre-check de un pendiente equivalente.
+  reportes del salón), que la carrera concurrente se materialice **antes de la decisión del backend**, o una
+  herramienta de escritura **sin** protección de solape (p. ej. carrito o pedidos). Con cualquiera de los
+  tres se reabre y se evalúa la clave por intención o el pre-check de un pendiente equivalente.
 
 ## Consecuencias
 
@@ -64,7 +69,8 @@
   intención; el reintento dentro del turno queda cubierto por diseño.
 - **Negativas / riesgos:** el 409 de solape y el 409 del tope de pendientes llegan hoy con la misma forma, así
   que el agente no puede distinguirlos hasta que el backend añada el `code` estable pedido en §11.2; la
-  carrera concurrente queda documentada y aceptada.
+  carrera concurrente queda documentada y **pendiente de decisión del backend** (inclinación al constraint
+  de exclusión, su PR #88), no aceptada.
 - **Del lado backend (pedido, no implementación de este repo):** respetar la `Idempotency-Key` en los tres
   endpoints internos con el patrón del POST público (PR #78) y añadir el `code` estable en el 409.
 
@@ -75,3 +81,6 @@
   `docs/reviews/2026-09-28-joint-integration-review-3.md`.
 - `docs/contracts/internal-api.openapi.yaml` v0.5.0 (endpoints de escritura con la cabecera obligatoria y la
   validacion de offset).
+- PRs #87 y #88 de `saaspa-backend` (abiertos al 2026-09-28): #87 implementa `misCitas` con la paginación
+  `page`/`limit` que el contrato recoge; #88 registra el diseño aceptado con los códigos propuestos
+  (`SLOT_TAKEN`/`PENDING_CAP_REACHED`/`BOOKING_EXPIRED`) y la carrera concurrente como decisión pendiente.

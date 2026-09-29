@@ -15,6 +15,8 @@ info:
     ADR 0012) y el enum pasa a un esquema compartido BookingStatus; los tres endpoints de escritura
     declaran la clave por turno <operacion>:<jti> (ADR 0021) y startTime exige offset explicito validado
     contra la rejilla publicada (pedido en AGENTS.md seccion 11).
+    Ajuste posterior (2026-09-28): paginacion por query de myBookings, page/limit (PR #87 de
+    saaspa-backend, abierto).
     v0.3.1 (J-07, ADR 0017): el esquema de error pasa a describir lo que el backend responde de verdad
     (el formato por defecto de NestJS, `NestError`), en vez de un ProblemDetail que no implementa.
     Endpoints implementados: GET /api/internal/v1/services (paginado, espejo del catalogo publico),
@@ -209,7 +211,12 @@ paths:
       description: >-
         Citas de turn.userId, el sujeto firmado del turn token (ADR 0012: este endpoint no acepta
         identidad en el cuerpo ni en la query; el canal anonimo no consulta citas a nombre de nadie).
-        Orden por start ascendente. Los errores llegan en la forma NestError del backend.
+        Orden por start ascendente. Paginacion por query (implementada en su PR #87, abierto al
+        2026-09-28): page (defecto 1) y limit (defecto 20, maximo 50; por encima responde 400). Los
+        errores llegan en la forma NestError del backend.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         '200':
           description: Citas del cliente, con la zona del tenant y los instantes con offset explicito
@@ -222,6 +229,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/NestError' }
+        '400': { description: 'limit por encima de 50 (paginacion del PR #87 de saaspa-backend)' }
   /api/internal/v1/reports/sales:
     get:
       operationId: reportSales
