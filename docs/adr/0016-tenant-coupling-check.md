@@ -93,6 +93,25 @@ construir el prompt, así que el servicio arrancaba bien y el **primer turno** r
   normalizar zonas (la que importa es la que el compose deriva del mismo `.env`).
 - **Nada que coordinar:** no hay cambio de contrato, ni de forma de datos, ni de comportamiento del agente.
 
+## Addendum (2026-09-28, R-06.b de la tercera revisión): la escritura exige más que el aviso
+
+La decisión «avisar, no fallar» era correcta para la Fase 1, que es de solo lectura: con las zonas de los dos
+servicios desalineadas, lo peor que pasa es que el agente lee o dice una fecha equivocada, visible y corregible.
+Con escritura no sobrevive intacta: una `crearCita` con el acople desalineado agenda **a la hora equivocada y
+con dinero en medio** (R-06.b del informe #3, `docs/reviews/2026-09-28-joint-integration-review-3.md`).
+
+1. **Escrituras bloqueadas con el acople desalineado.** Mientras las herramientas de escritura estén
+   habilitadas, si `TenantCouplingCheck` detecta la desalineación, las herramientas de escritura responden
+   `ok=false` con un texto apto para la clienta (que no se pueden agendar citas por chat en este momento) y
+   el enlace a `/agendar` (R12); el motivo técnico va al log. Las **lecturas** mantienen la política de esta
+   ADR: aviso una vez por instancia y el turno continúa. El bloqueo no corta el turno ni deriva a handoff.
+2. **Por qué el bloqueo se mantiene aunque el backend valide instantes** (pedido en §11.2 de AGENTS.md):
+   exigir `startTime` con offset y pertenencia a la rejilla publicada cubre el **etiquetado** de zona, pero
+   no detecta un **día mal resuelto**: con las zonas desalineadas, «mañana» resuelto en la zona equivocada
+   produce un instante válido de la rejilla del día siguiente (o anterior), que pasa todas las validaciones
+   y agenda para el día que no es. La validación del backend es necesaria pero no suficiente; el bloqueo de
+   escrituras es la red que cierra el hueco de este lado.
+
 ## Referencias
 
 - J-06 (`docs/reviews/2026-09-26-joint-integration-review.md`); triaje §3 y §4; A-13 y C-02 (`AGENTS.md` §13).
