@@ -1,12 +1,15 @@
 openapi: 3.1.0
 info:
   title: NestJS Internal API (IA -> NestJS)
-  version: 0.3.1
+  version: 0.4.0
   description: >-
-    Contrato v0.3.1 (Fase 1 IMPLEMENTADA). Reconciliado contra saaspa-backend@develop (9fc8b12) el
+    Contrato v0.4.0 (Fase 1 IMPLEMENTADA). Reconciliado contra saaspa-backend@develop (9fc8b12) el
     2026-09-26 (informe: docs/contracts/f1-e2e-validation.md; la validacion del borrador v0.2.0 esta
     en docs/contracts/t1.0-backend-validation.md). Los endpoints de Fase 1 ya existen en el backend
     (src/modules/internal/); los de Fase 2/3/4 siguen siendo pedidos.
+    v0.4.0 (2026-09-28, informe #3 HN-02): se corrige la nota muerta de createBooking (el POST
+    /api/bookings publico YA acepta Idempotency-Key desde el PR #78 de saaspa-backend, 2026-09-27)
+    y Booking.status gana PAGO_TARDE (H-01 del backend, PR #81).
     v0.3.1 (J-07, ADR 0017): el esquema de error pasa a describir lo que el backend responde de verdad
     (el formato por defecto de NestJS, `NestError`), en vez de un ProblemDetail que no implementa.
     Endpoints implementados: GET /api/internal/v1/services (paginado, espejo del catalogo publico),
@@ -113,9 +116,12 @@ paths:
       operationId: createBooking
       summary: Crea una cita en PENDIENTE_PAGO (Fase 2, escritura)
       description: >-
-        Nuevo respecto a la API publica: hoy POST /api/bookings no acepta Idempotency-Key y no
-        devuelve deep-link de pago (el pago se inicia con POST /api/payments/init, que entrega la
-        configuracion del widget). Pedido 5 de AGENTS.md seccion 11.
+        Envuelve el comportamiento real de POST /api/bookings, que YA acepta Idempotency-Key desde
+        el PR #78 de saaspa-backend (fusionado 2026-09-27: indice unico en bookings.idempotencyKey
+        mas guard interno de identidad). Lo que sigue siendo nuevo del endpoint interno: el sujeto
+        resuelto desde el turn token (ADR 0012) y el deep-link de pago (paymentUrl; el pago publico
+        se inicia con POST /api/payments/init, que entrega la configuracion del widget y ninguna
+        URL). Pedido 5 de AGENTS.md seccion 11.
       parameters:
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
       requestBody:
@@ -320,8 +326,10 @@ components:
             5 min y una vez al arrancar, libera el lock de Redis y borra el evento de Calendar si existe.
             Un pago tardio queda APROBADO y necesita decision manual, y `confirm`/`reschedule` rechazan una
             cita EXPIRADA. La franja liberada vuelve a aparecer en `/availability` porque el filtro de
-            ocupacion es el mismo que usan la disponibilidad y las comprobaciones de solape.
-          enum: [PENDIENTE_PAGO, CONFIRMADA, CANCELADA, COMPLETADA, NO_ASISTIO, EXPIRADA]
+            ocupacion es el mismo que usan la disponibilidad y las comprobaciones de solape. Un pago tardio
+            (H-01 del backend, PR #81) crea el estado PAGO_TARDE con `reviewRequired` (decision manual
+            pendiente), excluido del filtro de ocupacion.
+          enum: [PENDIENTE_PAGO, CONFIRMADA, CANCELADA, COMPLETADA, NO_ASISTIO, EXPIRADA, PAGO_TARDE]
         serviceId: { type: string }
         startTime: { type: string, format: date-time }
         endTime: { type: string, format: date-time }

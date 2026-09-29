@@ -284,7 +284,9 @@ Resuelto respecto del snapshot inicial de Initializr:
   `ia.turn_log` / `ia.tool_call_log`. Evidencia y reconciliación de los contratos:
   `docs/contracts/f1-e2e-validation.md`.
 - Lo que falta para un despliegue real ya **no** es el contenedor (el `Dockerfile` está en este repo desde
-  H-02, 2026-09-26): son los **valores y los números** en `kamerinos-infra` (ver §11.5 y la nota de H-02 en §7).
+  H-02, 2026-09-26): son los **valores** en `kamerinos-infra` —los números de la escalera ya están en su
+  compose, pero **sin commitear** (leído el 2026-09-28) y ninguna variable del acople está en su
+  `.env`/`.env.example`— (ver §11.5 y la nota de H-02 en §7).
 
 ### Discrepancias verificadas durante T1.0 (2026-09-24)
 
@@ -351,10 +353,12 @@ este repo **no tenía `Dockerfile`**: el contenedor no se podía construir. Resu
   no vuelva a desaparecer o romperse sin que nadie lo note. El CI valida **construcción**; el **arranque** se
   validó a mano: `docker run` contra el Postgres del `docker-compose.yml` del repo, `/actuator/health` en `UP`
   y el esquema `ia` migrado por Flyway.
-- **Lo que queda (y no es de este repo):** el `ia-bot` del compose fija `LLM_READ_TIMEOUT: 30s` /
-  `LLM_TURN_DEADLINE: 35s` —la escalera invertida que ADR 0014 vino a corregir— y no trae `IA_BOT_TIMEOUT_MS`
-  en el bloque `backend`; ninguna de las variables del acople está en su `.env.example`. Pedido en **11.5**.
-  Mientras no se aplique, el despliegue **reintroduce J-04**.
+- **Lo que queda (y no es de este repo):** el compose de `kamerinos-infra` ya trae la escalera correcta en su
+  árbol de trabajo (`LLM_READ_TIMEOUT: 10s`, `LLM_TURN_DEADLINE: 20s` e `IA_BOT_TIMEOUT_MS: 25000`; leído el
+  2026-09-28, **sin commitear todavía**), pero **ninguna** variable del acople está en su
+  `.env`/`.env.example` (0 aciertos: Compose las interpola a cadena vacía y el primer turno da 401/500) y
+  desde HN-01 falta también el valor de `IA_COST_GUARD_ORIGIN_SALT` (sin él, el contenedor ya no arranca, a
+  propósito). Pedido en **11.5**; hasta que se commitee y se llenen los `.env`, el despliegue **no funciona**.
 
 ---
 
@@ -719,16 +723,18 @@ Autenticación: `X-Internal-Api-Key` con el valor de `IA_BOT_API_KEY` (NestJS �
 
 ### 11.5 Otros repos y contratos
 
-- **kamerinos-infra (pendiente; pedido de H-02, 2026-09-26):** añadir el contenedor `ia-bot` a la red interna
-  (el `Dockerfile` ya existe en este repo); PostgreSQL con pgvector y usuario con permisos solo sobre el
-  esquema `ia`; variables de entorno de 11.4. Lo que falta **en su compose/`.env`**:
-  (1) los tres números de la escalera de ADR 0014 —`LLM_READ_TIMEOUT: 10s` y `LLM_TURN_DEADLINE: 20s` en
-  `ia-bot`, y `IA_BOT_TIMEOUT_MS: 25000` en `backend`, o **quitar los tres** y dejar los valores por defecto
-  que anclan las pruebas—, porque hoy trae 30 s/35 s y **reintroduce J-04**;
-  (2) las variables del acople que no están en su `.env.example` (`LLM_*`, `TURN_TOKEN_PUBLIC_KEY`, las claves
-  de servicio…): Compose las resuelve a cadena vacía y el primer turno da 401/500;
+- **kamerinos-infra (pendiente; pedido de H-02, 2026-09-26, re-verificado el 2026-09-28):** añadir el
+  contenedor `ia-bot` a la red interna (el `Dockerfile` ya existe en este repo); PostgreSQL con pgvector y
+  usuario con permisos solo sobre el esquema `ia`; variables de entorno de 11.4. Lo que falta **en su
+  compose/`.env`** (leído en su árbol de trabajo el 2026-09-28):
+  (1) los tres números de la escalera de ADR 0014 —`LLM_READ_TIMEOUT: 10s`, `LLM_TURN_DEADLINE: 20s` e
+  `IA_BOT_TIMEOUT_MS: 25000`— **ya están** en su compose… pero **sin commitear** (fichero modificado desde el
+  2026-09-26): falta el commit;
+  (2) las variables del acople siguen **sin estar** en su `.env`/`.env.example` (0 aciertos el 2026-09-28:
+  `LLM_API_KEY`, `TURN_TOKEN_PRIVATE_KEY`/`TURN_TOKEN_PUBLIC_KEY` con sus `kid`, `INTERNAL_API_KEY`,
+  `IA_BOT_API_KEY`, `IA_COST_GUARD_ORIGIN_SALT`, `SALON_NOTIFICATION_EMAIL`…): Compose las resuelve a cadena
+  vacía y el primer turno da 401/500 (y desde HN-01, sin sal, el `ia-bot` directamente no arranca);
   (3) `TZ` del contenedor (`America/Bogota`) coherente con `IA_TENANT_TIMEZONE` (J-06).
-  El repositorio no se toca desde 2026-09-18: es la coordinación que falta **antes de abrir la Fase 2**.
   (La antigua duda de la TZ del contenedor del backend quedó resuelta: la disponibilidad se devuelve con
   offset explícito calculado con `Intl/ICU`.)
 - **saaspa-backend (H-04, hecho el 2026-09-26):** el claim **`clientIp`** ya se emite (su PR #84, commit
@@ -841,8 +847,10 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
       agujero de H-02: sin esa traducción el contenedor no arrancaba ni con `Dockerfile`); validado con `docker
       build` + `docker run` contra el Postgres del `docker-compose.yml`, `/actuator/health` en `UP` y el esquema
       `ia` migrado por Flyway — rama `fix/h02-dockerfile-and-boot`, 2026-09-26
-- [ ] H-02, lado de `kamerinos-infra` (**no** de este repo): escalera 10 s/20 s/25 s en su compose,
-      `IA_BOT_TIMEOUT_MS` en el bloque `backend` y las variables del acople en su `.env.example` — pedido en §11.5
+- [ ] H-02, lado de `kamerinos-infra` (**no** de este repo): la escalera 10 s/20 s/25 s y
+      `IA_BOT_TIMEOUT_MS` **ya están** en su compose pero **sin commitear** (leído 2026-09-28), y las
+      variables del acople siguen sin estar en su `.env`/`.env.example` (incluida
+      `IA_COST_GUARD_ORIGIN_SALT`, que desde HN-01 impide el arranque si falta) — pedido en §11.5
 
 ### Fase 0 — Alineación y contratos (completada 2026-09-23)
 - [x] Ramas `main` y `develop` configuradas; trabajo en `feature/f0-alineacion`
@@ -885,13 +893,23 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [ ] Idempotencia + confirmación explícita + feature flag
 - [ ] Enlaces pre-diligenciados `/agendar` y `/shop`
 - [ ] Tests de idempotencia y fechas relativas
-- [ ] **Bloqueantes antes de la primera herramienta de escritura** (triaje conjunto del 2026-09-26): J-03
+- [x] **Bloqueantes antes de la primera herramienta de escritura** (triaje conjunto del 2026-09-26): J-03
       abuso/coste (ADR 0010), B-01 expiro de `PENDIENTE_PAGO` y tope de reservas pendientes (ADR 0011),
       J-08+J-09 identidad desde el turn token e idempotencia (ADR 0012) y J-05 handoff con destino y
-      reversible (ADR 0013, coordinado con el backend)
-- [ ] **Misma pasada que los bloqueantes:** J-04 escalera de plazos y turno fallido registrado (ADR 0014,
+      reversible (ADR 0013, coordinado con el backend). **Cerrados los cuatro, verificado el 2026-09-28 con
+      los PRs de `saaspa-backend` consultados uno a uno:** J-03 → este repo (`TurnCostGuard`, cuatro topes y
+      429) + backend PR #76 (`trust proxy` de un salto y sesión firmada) y PR #77 (tope de pendientes por
+      cuenta); B-01 → backend PR #77 (estado `EXPIRADA`) + contrato y caso del dataset en este repo;
+      J-08+J-09 → ADR 0012 aceptada + backend PR #78 (guard interno de identidad + `Idempotency-Key` en el
+      POST público); J-05 → ADR 0013 aceptada + backend (correo al staff con el texto del turno derivado y
+      cierre reversible por `PATCH`, verificado en el informe #3 §3). Los bloqueantes **reales** que quedan
+      antes de construir una herramienta de escritura son los del paso 0 de la tercera revisión (§6 del
+      informe #3): productor del `paymentUrl`, variables del acople y sal en el despliegue
+- [x] **Misma pasada que los bloqueantes:** J-04 escalera de plazos y turno fallido registrado (ADR 0014,
       coordinado), J-06 acople comprobable y campos muertos (ADR 0016) y J-07 contrato de error (ADR 0017,
-      coordinado)
+      coordinado). **Cerrados los tres:** J-04 cerrado en los dos repos y anclado con test (informe #2 §3:
+      `timeout-ladder.spec.ts` del backend y `application.yml` de este), J-06 y J-07 con sus entradas [x]
+      propias más abajo en este checklist
 - [x] **J-06 (ola 3, ADR 0016 — mitad de este repo):** el acople de zona horaria con NestJS se comprueba en el
       primer turno (avisa una vez, no corta: el campo es informativo), la propia zona se valida **al arrancar**
       (una errata ya no arranca el servicio en vez de dar 500 en el primer turno) y `/actuator/info` publica
@@ -965,14 +983,17 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - **B-01 ya no tiene nada pendiente de este lado:** el backend implementó la expiración (PR #77, estado
   `EXPIRADA`), el contrato interno expone el estado y el caso `B01-franja-liberada-por-expiracion` está en el
   dataset `eval/` (real, no brecha).
-- **J-04 (ola 3, ADR 0014):** la mitad de este repo está en la rama `fix/timeout-ladder` (`read-timeout` 10 s,
-  `turn-deadline` 20 s, `turnId` en el 504 y fila `DEADLINE` en `ia.turn_log`); **no se fusiona** hasta que el
-  backend tenga su `IA_BOT_TIMEOUT_MS` en 25 s y los dos números se revisen juntos.
-- **J-03 (ola 1, ADR 0010):** la mitad de este repo está implementada en `feature/f2-per-tenant-cost-guard`
-  (`usage/TurnCostGuard`: ventana de 1 h, 240 turnos y 1 M tokens por tenant, 30 turnos y 150 k tokens por
-  conversación, medidos sobre `ia.turn_log`, con **429**); el 429 lo mapea hoy el backend a 502 (J-07). Sigue
-  pendiente del backend el tope **por cuenta** al crear citas (Fase 2).
-- **Ninguna rama de implementación está abierta**: el triaje es solo el mapeo.
+- **J-04 (ola 3, ADR 0014):** **cerrado en los dos repos y anclado con test** (informe #2, §3; re-verificado
+  2026-09-28): la escalera 10 s/20 s/25 s vive en `develop` de este repo (`application.yml`) y en el
+  `ia-bot.client` del backend (con `turnId` en el 504 y fila `DEADLINE` en `ia.turn_log`). El despliegue solo
+  lo revierte si el compose de infra deja de traer los números: los trae, aunque **sin commitear**.
+- **J-03 (ola 1, ADR 0010):** **cerrado en los dos repos** (verificado 2026-09-28): la mitad de este repo está
+  fusionada en `develop` (`usage/TurnCostGuard`: ventana de 1 h, cuatro topes —tenant, conversación, tokens y
+  origen— con **429** medidos sobre `ia.turn_log`), el backend mapea ese 429 como 429 (su PR #83, ya no 502) e
+  incluyó el tope de reservas pendientes por cuenta al crear citas en su PR #77
+  (`BOOKING_MAX_PENDING_PER_USER`, 409).
+- **Nota histórica del triaje:** el mapeo se escribió antes de abrir ninguna rama de implementación; desde
+  entonces las ramas de los ítems ya cerrados se crearon y fusionaron (ver §12 y el registro de cambios, §14).
 - Los solapes con los hallazgos ya diferidos de §13 están cruzados en el §6 del triaje (J-03 ↔ A-06,
   J-04 ↔ A-08/A-15, J-05 ↔ C-13, J-06 ↔ C-02/A-13, J-10 ↔ A-17/A-04/A-05).
 
@@ -1116,6 +1137,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — feature/actuator-info-and-tenant-coupling — **J-06 (ola 3) + parte de A-13**: **ADR 0016** (Aceptada) y el acople de tenant/zona horaria con NestJS comprobable: `tenant/TenantCouplingCheck` compara la `timezone` que envía el backend en cada turno con `saaspa.tenant.timezone` y **avisa una vez por instancia** si no coinciden —sin cortar el turno, porque el campo es informativo (C-02)—, `TenantProperties` valida en su **constructor compacto** que el tenant no esté vacío y que la zona sea un `ZoneId` válido (una errata en `IA_TENANT_TIMEZONE` ahora impide el arranque en vez de dar 500 en el primer turno) y `TenantInfoContributor` publica `saaspa.tenant.id`/`saaspa.tenant.timezone` (con el prompt y el modelo) en `/actuator/info`, que deja de estar vacío (A-13 parcial); los tres campos del cuerpo (`locale`/`timezone`/`now`) siguen **informativos** y el contrato solo cambia de prosa (`chat-api` **v0.6.2** documenta `timezone` como señal del acople y aclara que los tres no deciden nada); **decidido no hacer** la consulta de `/actuator/info` al arrancar por el backend (haría de `ia-bot` dependencia de arranque suya y exigiría `healthcheck`/`depends_on` en infra) ni una prueba de conformidad en CI (no ve el despliegue y necesita un valor compartido que mantener): queda como **pedido de baja prioridad redactado y NO enviado** en §11.5; tests: `TenantCouplingCheckTest` (4: aviso único, silencio si coinciden, tolerancia sin valor, predicado), `TenantPropertiesTest` (3), un caso en `ChatControllerTest` (con la zona desalineada el turno sigue respondiendo 200 y el WARN aparece) y uno en `ChatApiTurnIntegrationTest` (`/actuator/info` publica el tenant y la zona) — verify verde (157 tests).
 - 2026-09-26 — fix/j07-error-contract-and-client-facing-detail — **J-07 (ola 3) y la frontera error interno/texto de la clienta**: **ADR 0017** (Aceptada) y `api/ProblemCode`, un catálogo cerrado donde cada error tiene estado, título y **texto apto para la clienta** —el `detail` del `ProblemDetail` es lo que NestJS reenvía tal cual al widget— de modo que ningún camino de error vuelve a llevar jerga interna, identificadores ni referencias al roadmap; el **motivo técnico** (qué campo no cuadró, qué excepción se lanzó, qué falló en la autenticación) pasa al **log** y nunca al cuerpo (R8); el `ProblemDetail` gana una propiedad **`code`** estable (`TURN_CONTEXT_MISMATCH`, `INVALID_BODY`, `MALFORMED_BODY`, `UNAUTHENTICATED`, `ACCESS_DENIED`, `TENANT_NOT_ALLOWED`, `COST_LIMIT`, `AGENT_NOT_IMPLEMENTED`, `BACKEND_UNAVAILABLE`, `BACKEND_ERROR`, `MODEL_TIMEOUT`, `UNEXPECTED`) que el gateway podrá mapear sin leer prosa; el manejador de seguridad **ahora registra** los 401/403 (antes no dejaba ningún rastro) y deja de contar a quien llama qué comprobación falló —el filtro de la clave de servicio registra a `warn`/`error` según el caso—; los casos que interpolaban `exception.getMessage()` (400 de contexto y 501 de agente) usan texto público y el título *"Tenant no permitido"* pasa a *"Peticion no permitida"*; contratos: `chat-api` **v0.6.3** (documenta que `detail` es de cara a la clienta y añade `code`) e `internal-api` **v0.3.1** (describe la forma REAL de NestJS, `NestError`, en vez de un RFC 9457 que no implementa) — **`web-chat-api` NO se toca a propósito**: `saaspa-backend` está implementando `problem+json` real en su `ChatController` público y ese contrato se corregirá para **confirmar `Problem`** cuando se fusione su PR, y el pedido de que su gateway registre `detail`+`code` y decida el texto de la clienta queda en §11.5 como baja prioridad y **sin enviar**; tests: `ProblemCodeTest` (4, la **guarda** de que ningún texto público lleva jerga ni roadmap y que cada código agrupa un estado de error), `ChatControllerTest` (los códigos en cada caso, el texto público y el motivo en el log) y `ChatApiSecurityTest` (401 con `code` y texto apto) — verify verde (161 tests).
 - 2026-09-26 — docs/web-chat-api-problem-json — **J-07, cierre (mitad coordinada)**: con el PR #85 de `saaspa-backend` ya fusionado, `web-chat-api` **v0.4.0** **confirma RFC 9457** para los errores del chat en vez de documentarlos como la forma de NestJS: media type `application/problem+json` en **400/403/413/429/502/504** (antes solo el 400 lo declaraba, y bajo `application/json`), con el esquema real (`type` = `about:blank`, `title` = frase corta por estado, `status`, `detail` = el texto de cara a la clienta e `instance`) y las **extensiones del tope** (`scope`/`measure`/`measured`/`limit`/`window`) documentadas como presentes **solo** en el 429 de coste; todo **verificado leyendo el código fusionado** del backend (`src/common/filters/problem-details.filter.ts` y `src/common/http/problem-extensions.ts`), no su PR, y anotado que el filtro es `@Catch()` y se aplica **solo a los endpoints de chat** (el resto del API conserva la forma de NestJS) y que un 500/501 inesperado también sale con ese formato; **matiz verificado**: el filtro **no reenvía** el `code` de este servicio (copia solo las cinco extensiones y "anything else is ignored on purpose"), así que `code` queda documentado como **exclusivo del tramo IA → backend** (`chat-api`) y su reenvío al widget es una **mejora opcional de baja prioridad** en §11.5, **sin enviar**; cierres: el ítem «J-07, resto (coordinado)» del checklist pasa a hecho, la decisión 4 de la ADR 0017 recoge el matiz y el triaje queda cerrado — verify verde (161 tests, sin cambios de código).
+- 2026-09-28 — docs/refresh-stale-state-notes — **barrido de notas muertas (informe #3, §3 y HN-02):** `internal-api` pasa a **v0.4.0**: la descripción de `createBooking` ya no afirma que el POST público no acepta `Idempotency-Key` (falso desde el PR #78 del backend) y `Booking.status` gana `PAGO_TARDE` con su descripción (H-01 del backend). AGENTS.md: la nota del contenedor (§7), el «valores y números» de §7 y el pedido a infra de §11.5 dejan de dar por pendiente la escalera (está en el árbol de trabajo de infra, **sin commitear**) y anotan que la sal de HN-01 también falta allí; los bullets J-04/J-03 y «ninguna rama abierta» del triaje pasan a su estado real (cerrados y fusionados); el ítem H-02 del checklist se reformula y los ítems «Bloqueantes» e «Misma pasada» de la Fase 2 pasan a [x] **con los PRs del backend consultados uno a uno** (#76, #77, #78, #83 y el handoff de J-05 verificado en el informe #3 §3); nota de estado de la ADR 0012 (mitad de backend hecha en su PR #78) y README alineado — verify verde (161 tests, solo documentación).
 
 
 

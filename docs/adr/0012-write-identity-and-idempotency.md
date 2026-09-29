@@ -2,8 +2,9 @@
 
 - **Estado:** Aceptada (2026-09-26)
 - **Fecha:** 2026-09-26
-- **Implementación:** pendiente (es bloqueante de cualquier herramienta de escritura de la Fase 2). No hay
-  objeciones abiertas: solo falta implementarla.
+- **Implementación:** la mitad del backend está hecha (PR #78 de `saaspa-backend`, fusionado el 2026-09-27:
+  guard interno que toma la identidad desde el token y `Idempotency-Key` en el POST público de bookings);
+  lo que falta son los endpoints internos de Fase 2 y este lado. No hay objeciones abiertas.
 - **Origen:** hallazgos **J-08** y **J-09** del informe conjunto; ola 1 del triaje.
 - **Base:** **ADR 0008** (ya fija la `Idempotency-Key` derivada de `turnId` + acción) y **ADR 0006** (turn
   token con `userId`/`role`). Esta ADR no reemplaza a ninguna de las dos: las precisa para la escritura.
