@@ -123,7 +123,12 @@ backend ya lo emite desde su PR #84 y la activación está verificada en
 ola 3 del triaje, J-06: comprobación del acople de tenant y zona horaria —aviso en el primer turno,
 validación propia al arrancar y valores publicados en `/actuator/info`—) y
 `docs/adr/0017-error-contract-and-client-facing-detail.md` (2026-09-26, J-07: la frontera entre el error
-interno y el texto de la clienta: catálogo cerrado de textos, `code` estable y el motivo técnico al log).
+interno y el texto de la clienta: catálogo cerrado de textos, `code` estable y el motivo técnico al log) y
+`docs/adr/0021-write-idempotency-key-per-turn.md` (2026-09-28, Fase 2: la `Idempotency-Key` de las
+herramientas de escritura es `<operación>:<jti>`; los turnos equivalentes en secuencia los cubre el 409 de
+solape del backend —verificado por la sesión de backend— y la carrera concurrente queda como **decisión
+pendiente del backend** (inclinación al constraint de exclusión, su PR #88), con los descartes y el
+disparador de reapertura documentados).
 
 **Ola 1 de la Fase 2** (2026-09-26 — ver el triaje conjunto, §3). **Las cuatro están Aceptadas**; la 0013 con el
 destino ya decidido:
@@ -651,7 +656,34 @@ Contrato: `docs/contracts/internal-api.openapi.yaml`. Autenticación: `X-Interna
   T1.0 queda cerrado.
 - **Hecho:** `@SkipThrottle()` está aplicado en los dos controladores internos de Fase 1. **Pendiente:** la
   auditoría de las llamadas internas (`AuditService` existe, pero `src/modules/internal/` no lo usa).
-- Fase 2: `POST /bookings` con `Idempotency-Key`, `PATCH`/`DELETE /bookings/{id}` y `GET /me/bookings`.
+- **Fase 2 (pedido formal, 2026-09-28; contrato `internal-api` v0.6.0 y ADR 0021):**
+  1. `GET /api/internal/v1/me/bookings` (`misCitas`): citas de `turn.userId` con la forma del contrato
+     (`{timezone, bookings: [...], hasMore}`, `start`/`end` con offset ISO y el enum completo de estados) y
+     paginación `page`/`limit` (1/20, máximo 50; 400 por encima) más `upcoming` (boolean, defecto false;
+     true = solo citas desde ahora, orden ascendente — **la herramienta lo usará `upcoming=true` por
+     defecto**), **403 sin identidad** (canal anónimo, ADR 0012). **Implementado y fusionado** en su PR #87
+     (2026-09-29, forma verificada leyendo su código en `develop`); el contrato v0.6.0 lo refleja.
+  2. `POST /api/internal/v1/bookings` con `Idempotency-Key` obligatoria: la clave la construye este servicio
+     por código como `<operación>:<jti>` (ADR 0021) y el backend la respeta con el patrón de su POST público
+     (índice único, PR #78).
+  3. `PATCH`/`DELETE /api/internal/v1/bookings/{id}` con la misma política de clave (ADR 0021) y la
+     titularidad contra `turn.userId` (ADR 0012).
+  4. Validación de instantes en los tres: `startTime` **con offset obligatorio** (400 si es naive) y
+     pertenencia a la rejilla de slots publicada para ese día (el agente solo reenvía instantes que devolvió
+     `/availability`); una hora que no es slot (fuera de horario o fuera de la grilla) responde **400 con
+     `code` propuesto `INVALID_SLOT`** (PR #88 de `saaspa-backend`, fusionado 2026-09-29; la validación de
+     tres capas —offset, coherencia del offset y pertenencia al slot— está decidida en su diseño, y
+     neutraliza R-06.b en la frontera de escritura).
+  5. `code` estable en el 409 que distinga **slot ocupado** de **tope de reservas pendientes por cuenta**
+     —**nombres propuestos**: `SLOT_TAKEN` / `PENDING_CAP_REACHED` (PR #88 de `saaspa-backend`, fusionado
+     2026-09-29)—: hoy llegan con la misma forma y el agente no puede explicárselos distinto a la clienta.
+  6. `paymentUrl` —**opción A, decidida por la persona**: enlace **firmado** producido por el backend al crear
+     la cita (`PENDIENTE_PAGO`), que apunta a una página pública del frontend que arranca el pago desde la
+     referencia. Requiere endpoint público de emisión/validación en `saaspa-backend`, página en
+     `saaspa-frontend` y `FRONTEND_BASE_URL` en `kamerinos-infra`.
+  7. (Baja prioridad) Rechazar `cancel` de una cita `EXPIRADA` (hoy la convierte en `CANCELADA` y pierde el
+     matiz del dinero), antes de que el agente pueda cancelar por chat; **código propuesto**:
+     `BOOKING_EXPIRED` (PR #88 de `saaspa-backend`, fusionado 2026-09-29).
   Fase 3: reportes. Fase 4: NestJS resuelve el `waId` de WhatsApp por su lado (ADR 0005) y firma el
   `userId` en el turn token; este servicio no pide resolverlo (A-11).
 
@@ -893,6 +925,15 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
 - [ ] Idempotencia + confirmación explícita + feature flag
 - [ ] Enlaces pre-diligenciados `/agendar` y `/shop`
 - [ ] Tests de idempotencia y fechas relativas
+- [ ] **Puertas antes de construir la primera herramienta de escritura (paso 0 del informe #3, §6):** productor
+      del `paymentUrl` (opción A decidida, pedido 6 en §11.2), endpoints internos de Fase 2 en el backend
+      (pedido formal en §11.2) y variables del acople con la sal en el despliegue (§11.5)
+- [ ] Notas para los casos de agenda en `eval/` (se implementan en la misma rama que cada herramienta, R15):
+      confirmación explícita antes de escribir (R9); anónimo → enlace a `/agendar`, nunca una escritura
+      (ADR 0012.2); fecha relativa mal resuelta → no escribe (R13); reprogramar/cancelar pide confirmar la
+      cita exacta; zona desalineada → la escritura responde que no puede agendar y ofrece el enlace
+      (addendum de la ADR 0016); `PAGO_TARDE` explicado sin inventar política de reembolso (R10/R11); 409 de
+      slot ocupado y de tope de pendientes explicados distinto (necesita el `code` del pedido 5 de §11.2)
 - [x] **Bloqueantes antes de la primera herramienta de escritura** (triaje conjunto del 2026-09-26): J-03
       abuso/coste (ADR 0010), B-01 expiro de `PENDIENTE_PAGO` y tope de reservas pendientes (ADR 0011),
       J-08+J-09 identidad desde el turn token e idempotencia (ADR 0012) y J-05 handoff con destino y
@@ -905,6 +946,12 @@ Marca con `[x]` al terminar y anota la fecha. No marques nada que no esté verif
       cierre reversible por `PATCH`, verificado en el informe #3 §3). Los bloqueantes **reales** que quedan
       antes de construir una herramienta de escritura son los del paso 0 de la tercera revisión (§6 del
       informe #3): productor del `paymentUrl`, variables del acople y sal en el despliegue
+- [x] **Diseño de la Fase 2 (informe #3, §5 y §6, 2026-09-28):** **ADR 0021** (clave por turno
+      `<operación>:<jti>` con descartes documentados y disparador de reapertura), **addendum de la ADR
+      0016** (escrituras bloqueadas con el acople de zona desalineado; las lecturas siguen avisando),
+      contrato de `misCitas` y de los endpoints de escritura en `internal-api` **v0.6.0** y pedido formal al
+      backend en §11.2 — rama `docs/f2-write-design`. **Sin código**: ni el flag `ia.tools.write.enabled` ni
+      el POST del `BackendClient` se diseñan todavía (van con la rama de la primera herramienta)
 - [x] **Misma pasada que los bloqueantes:** J-04 escalera de plazos y turno fallido registrado (ADR 0014,
       coordinado), J-06 acople comprobable y campos muertos (ADR 0016) y J-07 contrato de error (ADR 0017,
       coordinado). **Cerrados los tres:** J-04 cerrado en los dos repos y anclado con test (informe #2 §3:
@@ -1144,6 +1191,7 @@ Añade una línea por tarea terminada: `fecha — rama — qué cambió — resu
 - 2026-09-26 — fix/j07-error-contract-and-client-facing-detail — **J-07 (ola 3) y la frontera error interno/texto de la clienta**: **ADR 0017** (Aceptada) y `api/ProblemCode`, un catálogo cerrado donde cada error tiene estado, título y **texto apto para la clienta** —el `detail` del `ProblemDetail` es lo que NestJS reenvía tal cual al widget— de modo que ningún camino de error vuelve a llevar jerga interna, identificadores ni referencias al roadmap; el **motivo técnico** (qué campo no cuadró, qué excepción se lanzó, qué falló en la autenticación) pasa al **log** y nunca al cuerpo (R8); el `ProblemDetail` gana una propiedad **`code`** estable (`TURN_CONTEXT_MISMATCH`, `INVALID_BODY`, `MALFORMED_BODY`, `UNAUTHENTICATED`, `ACCESS_DENIED`, `TENANT_NOT_ALLOWED`, `COST_LIMIT`, `AGENT_NOT_IMPLEMENTED`, `BACKEND_UNAVAILABLE`, `BACKEND_ERROR`, `MODEL_TIMEOUT`, `UNEXPECTED`) que el gateway podrá mapear sin leer prosa; el manejador de seguridad **ahora registra** los 401/403 (antes no dejaba ningún rastro) y deja de contar a quien llama qué comprobación falló —el filtro de la clave de servicio registra a `warn`/`error` según el caso—; los casos que interpolaban `exception.getMessage()` (400 de contexto y 501 de agente) usan texto público y el título *"Tenant no permitido"* pasa a *"Peticion no permitida"*; contratos: `chat-api` **v0.6.3** (documenta que `detail` es de cara a la clienta y añade `code`) e `internal-api` **v0.3.1** (describe la forma REAL de NestJS, `NestError`, en vez de un RFC 9457 que no implementa) — **`web-chat-api` NO se toca a propósito**: `saaspa-backend` está implementando `problem+json` real en su `ChatController` público y ese contrato se corregirá para **confirmar `Problem`** cuando se fusione su PR, y el pedido de que su gateway registre `detail`+`code` y decida el texto de la clienta queda en §11.5 como baja prioridad y **sin enviar**; tests: `ProblemCodeTest` (4, la **guarda** de que ningún texto público lleva jerga ni roadmap y que cada código agrupa un estado de error), `ChatControllerTest` (los códigos en cada caso, el texto público y el motivo en el log) y `ChatApiSecurityTest` (401 con `code` y texto apto) — verify verde (161 tests).
 - 2026-09-26 — docs/web-chat-api-problem-json — **J-07, cierre (mitad coordinada)**: con el PR #85 de `saaspa-backend` ya fusionado, `web-chat-api` **v0.4.0** **confirma RFC 9457** para los errores del chat en vez de documentarlos como la forma de NestJS: media type `application/problem+json` en **400/403/413/429/502/504** (antes solo el 400 lo declaraba, y bajo `application/json`), con el esquema real (`type` = `about:blank`, `title` = frase corta por estado, `status`, `detail` = el texto de cara a la clienta e `instance`) y las **extensiones del tope** (`scope`/`measure`/`measured`/`limit`/`window`) documentadas como presentes **solo** en el 429 de coste; todo **verificado leyendo el código fusionado** del backend (`src/common/filters/problem-details.filter.ts` y `src/common/http/problem-extensions.ts`), no su PR, y anotado que el filtro es `@Catch()` y se aplica **solo a los endpoints de chat** (el resto del API conserva la forma de NestJS) y que un 500/501 inesperado también sale con ese formato; **matiz verificado**: el filtro **no reenvía** el `code` de este servicio (copia solo las cinco extensiones y "anything else is ignored on purpose"), así que `code` queda documentado como **exclusivo del tramo IA → backend** (`chat-api`) y su reenvío al widget es una **mejora opcional de baja prioridad** en §11.5, **sin enviar**; cierres: el ítem «J-07, resto (coordinado)» del checklist pasa a hecho, la decisión 4 de la ADR 0017 recoge el matiz y el triaje queda cerrado — verify verde (161 tests, sin cambios de código).
 - 2026-09-28 — docs/refresh-stale-state-notes — **barrido de notas muertas (informe #3, §3 y HN-02):** `internal-api` pasa a **v0.4.0**: la descripción de `createBooking` ya no afirma que el POST público no acepta `Idempotency-Key` (falso desde el PR #78 del backend) y `Booking.status` gana `PAGO_TARDE` con su descripción (H-01 del backend). AGENTS.md: la nota del contenedor (§7), el «valores y números» de §7 y el pedido a infra de §11.5 dejan de dar por pendiente la escalera (está en el árbol de trabajo de infra, **sin commitear**) y anotan que la sal de HN-01 también falta allí; los bullets J-04/J-03 y «ninguna rama abierta» del triaje pasan a su estado real (cerrados y fusionados); el ítem H-02 del checklist se reformula y los ítems «Bloqueantes» e «Misma pasada» de la Fase 2 pasan a [x] **con los PRs del backend consultados uno a uno** (#76, #77, #78, #83 y el handoff de J-05 verificado en el informe #3 §3); nota de estado de la ADR 0012 (mitad de backend hecha en su PR #78) y README alineado. **Ajuste posterior (2026-09-28, pedido al PR):** nota de estado de la **ADR 0013** también (solo estado, no la decisión): su mitad de backend está hecha y verificada —correo al staff con el texto del turno derivado y cierre reversible por `PATCH`, con entrega/reintento del aviso (H-03, PR #82) y evidencia archivo:línea en el informe #3 §3—, de este lado queda C-13 para la Fase 2; con eso el `[x]` de J-05 del checklist queda sostenido — verify verde (161 tests, solo documentación).
+- 2026-09-28 — docs/f2-write-design — **diseño de la Fase 2, solo documentos (informe #3, §5 y §6):** **ADR 0021** (Aceptada; la `Idempotency-Key` de las herramientas de escritura es `<operación>:<jti>` —precisa las ADR 0008/0012, no las reemplaza—; los turnos equivalentes en secuencia los cubre el **409 de solape** del backend, evidencia **verificada por la sesión de backend**, la carrera concurrente queda como **decisión pendiente del backend** (inclinación al constraint de exclusión, su PR #88) y documentada junto con los descartes —clave por intención y `bookingId`+operación: recrear tras cancelar devolvería la cita cancelada y reprogramar dos veces repetiría la primera respuesta— y el disparador para reabrir); **addendum de la ADR 0016** (con escritura, el acople de zona desalineado **bloquea las herramientas de escritura** con `ok=false`, texto público y enlace a `/agendar`; las lecturas siguen avisando; la validación de offset del backend no detecta un día mal resuelto, por eso el bloqueo se mantiene); **`internal-api` v0.5.0** con el contrato de `misCitas` (`{timezone, bookings: [{id, serviceId, serviceName, price, start, end, status}]}`, `start`/`end` con offset ISO, enum completo con `EXPIRADA` y `PAGO_TARDE` en el esquema compartido `BookingStatus`, sujeto normativo desde `turn.userId`, 403 anónimo y forma Nest de error) y los endpoints de escritura con la clave por turno y el offset validado; **pedido formal al backend en §11.2** (endpoints internos, offset y pertenencia al slot, `code` estable en el 409 solape vs tope de pendientes, rechazo de cancelar una `EXPIRADA` en baja prioridad y `paymentUrl` opción A —enlace firmado con endpoint público en backend, página en frontend y `FRONTEND_BASE_URL` en infra, decidido por la persona—); **casos de agenda en `eval/` anotados como notas del checklist** (se implementan con cada herramienta, R15) y las puertas del paso 0 como ítems abiertos. **Sin código de agente**: ni flag ni cliente de escritura (van con la rama de la primera herramienta). **Ajuste posterior (2026-09-28, pedido al PR):** la carrera ya no se declara aceptada sino **pendiente de decisión del backend** con inclinación al constraint de exclusión (su PR #88, fusionado el 2026-09-29); `misCitas` gana paginación `page`/`limit` (1/20, máx 50, 400 por encima; su PR #87, fusionado el 2026-09-29) en contrato y §11.2; y `SLOT_TAKEN`/`PENDING_CAP_REACHED`/`BOOKING_EXPIRED` quedan marcados como **nombres propuestos** en §11.2. **Ajuste posterior (2026-09-29, pedido al PR):** rama reconstruida sobre `develop` actualizado (cherry-pick de sus dos commits a `docs/f2-write-design-v2`, porque la §9 prohíbe el force-push de ramas ya subidas); con los backend PRs **#87 y #88 fusionados** (2026-09-29) y su código leído en `develop@8015112`: contrato **v0.6.0** con `upcoming` (boolean, defecto false; **la herramienta usará `upcoming=true` por defecto**) y `hasMore` en `misCitas` (forma exacta `{timezone, bookings, hasMore}`), corrección del orden por defecto (**descendente**, no ascendente), `INVALID_SLOT` (400, hora que no es slot; nombre propuesto) en §11.2 y en el contrato, `code` aditivo en `NestError`, `payFull` marcado como **reservado, no soportado en v1** (se conserva, no se elimina), y estado de #87/#88 actualizado de «abierto» a «fusionado» en todo el PR; la **carrera de `create()` sigue pendiente** (verificado: ningún constraint de exclusión ni `SET NX` en su `develop`) — verify verde (167 tests, solo documentación).
 
 
 

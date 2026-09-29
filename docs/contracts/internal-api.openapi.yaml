@@ -1,15 +1,28 @@
 openapi: 3.1.0
 info:
   title: NestJS Internal API (IA -> NestJS)
-  version: 0.4.0
+  version: 0.6.0
   description: >-
-    Contrato v0.4.0 (Fase 1 IMPLEMENTADA). Reconciliado contra saaspa-backend@develop (9fc8b12) el
+    Contrato v0.6.0 (Fase 1 IMPLEMENTADA). Reconciliado contra saaspa-backend@develop (9fc8b12) el
     2026-09-26 (informe: docs/contracts/f1-e2e-validation.md; la validacion del borrador v0.2.0 esta
     en docs/contracts/t1.0-backend-validation.md). Los endpoints de Fase 1 ya existen en el backend
     (src/modules/internal/); los de Fase 2/3/4 siguen siendo pedidos.
     v0.4.0 (2026-09-28, informe #3 HN-02): se corrige la nota muerta de createBooking (el POST
     /api/bookings publico YA acepta Idempotency-Key desde el PR #78 de saaspa-backend, 2026-09-27)
     y Booking.status gana PAGO_TARDE (H-01 del backend, PR #81).
+    v0.5.0 (2026-09-28, diseno de Fase 2, ADR 0021): myBookings gana esquema propio (MyBookings/MyBooking
+    con offset ISO, serviceName y price, sujeto normativo desde el turn token y 403 para el canal anonimo,
+    ADR 0012) y el enum pasa a un esquema compartido BookingStatus; los tres endpoints de escritura
+    declaran la clave por turno <operacion>:<jti> (ADR 0021) y startTime exige offset explicito validado
+    contra la rejilla publicada (pedido en AGENTS.md seccion 11).
+    v0.6.0 (2026-09-29): reconciliado contra saaspa-backend@develop (8015112) con los PRs #87 y #88 ya
+    fusionados (2026-09-29) y su codigo leido en develop: myBookings gana `upcoming` (boolean, defecto
+    false; true = solo citas desde ahora, orden ascendente) y el campo `hasMore` en la respuesta; se
+    corrige el orden por defecto, que es el historial completo con start descendente (lo mas reciente
+    primero), no ascendente; createBooking declara 400 con `code` propuesto INVALID_SLOT (hora que no
+    es slot); `payFull` queda RESERVADO, no soportado en v1 (el backend lo ignora); y NestError gana el
+    campo aditivo `code` de los errores de negocio (emitido por los endpoints de escritura cuando
+    existan, nombres propuestos en el PR #88).
     v0.3.1 (J-07, ADR 0017): el esquema de error pasa a describir lo que el backend responde de verdad
     (el formato por defecto de NestJS, `NestError`), en vez de un ProblemDetail que no implementa.
     Endpoints implementados: GET /api/internal/v1/services (paginado, espejo del catalogo publico),
@@ -123,7 +136,14 @@ paths:
         se inicia con POST /api/payments/init, que entrega la configuracion del widget y ninguna
         URL). Pedido 5 de AGENTS.md seccion 11.
       parameters:
-        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+          description: >-
+            La construye el codigo de saaspa-IA (nunca el modelo) como <operacion>:<jti> (ADR 0021); el
+            backend la respeta con el mismo patron del POST publico (PR #78: indice unico). Un reintento
+            del mismo turno devuelve el mismo recurso sin duplicar.
       requestBody:
         required: true
         content:
@@ -135,11 +155,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
+        '400':
+          description: >-
+            startTime invalido: sin offset, offset incoherente con la zona del tenant, o hora que no es
+            slot (fuera de horario o fuera de la grilla). Para el tercer caso el backend propone
+            `code` estable INVALID_SLOT (PR #88, fusionado 2026-09-29; nombre propuesto).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409':
           description: >-
             Slot ocupado, o tope de reservas pendientes por usuario alcanzado
-            (`BOOKING_MAX_PENDING_PER_USER`, 2 por defecto; PR #77)
+            (`BOOKING_MAX_PENDING_PER_USER`, 2 por defecto; PR #77). Pedido en AGENTS.md seccion 11: un
+            `code` estable que distinga los dos (nombres propuestos: SLOT_TAKEN / PENDING_CAP_REACHED,
+            PR #88, fusionado 2026-09-29), para que el agente no los confunda.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
   /api/internal/v1/bookings/{id}:
     patch:
       operationId: rescheduleBooking
@@ -149,7 +182,13 @@ paths:
         se anade Idempotency-Key.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
-        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+          description: >-
+            La construye el codigo de saaspa-IA (nunca el modelo) como <operacion>:<jti> (ADR 0021). La
+            titularidad se comprueba contra turn.userId (ADR 0012).
       requestBody:
         required: true
         content:
@@ -158,7 +197,7 @@ paths:
               type: object
               required: [startTime]
               properties:
-                startTime: { type: string, format: date-time }
+                startTime: { type: string, format: date-time, description: 'Instante con offset explicito, tal como lo devolvio /availability; el backend rechaza timestamps sin offset y valida la pertenencia a la rejilla del dia (pedido en AGENTS.md seccion 11)' }
       responses:
         '200':
           description: Cita reprogramada
@@ -174,16 +213,51 @@ paths:
         anade Idempotency-Key.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
-        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+          description: >-
+            La construye el codigo de saaspa-IA (nunca el modelo) como <operacion>:<jti> (ADR 0021). La
+            titularidad se comprueba contra turn.userId (ADR 0012).
       responses:
         '200': { description: Cita cancelada }
   /api/internal/v1/me/bookings:
     get:
       operationId: myBookings
       summary: Citas del cliente autenticado (Fase 2)
-      description: Hoy equivale a GET /api/bookings cuando el rol es CLIENTE (el controlador filtra por userId).
+      description: >-
+        Citas de turn.userId, el sujeto firmado del turn token (ADR 0012: este endpoint no acepta
+        identidad en el cuerpo ni en la query; el canal anonimo no consulta citas a nombre de nadie).
+        Paginacion por query (PR #87 de saaspa-backend, fusionado 2026-09-29): page (defecto 1) y limit
+        (defecto 20, maximo 50; por encima responde 400). Orden por defecto: historial completo con start
+        descendente (lo mas reciente primero); con upcoming=true: solo citas que empiezan desde ahora y
+        orden ascendente (la mas proxima primero). La herramienta `misCitas` llamara con upcoming=true
+        por defecto, para que el historial largo nunca saque la cita proxima de la pagina. Los errores
+        llegan en la forma NestError del backend.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - name: upcoming
+          in: query
+          schema: { type: boolean, default: false }
+          description: >-
+            true = solo citas desde ahora, orden ascendente; false (defecto) = historial completo,
+            orden descendente. Validado en el backend como literal true/false (su DTO @IsIn): un valor
+            distinto responde 400.
       responses:
-        '200': { description: Citas del cliente }
+        '200':
+          description: Citas del cliente, con la zona del tenant y los instantes con offset explicito
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyBookings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Turn token sin identidad (canal anonimo, ADR 0012) o tenant del token no permitido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+        '400': { description: 'page < 1, limit fuera de 1..50, o upcoming distinto de true/false (DTO del PR #87 de saaspa-backend, fusionado)' }
   /api/internal/v1/reports/sales:
     get:
       operationId: reportSales
@@ -247,7 +321,11 @@ components:
       type: object
       description: >-
         Formato de error REAL del backend: el por defecto de NestJS (no es RFC 9457). `statusCode` es el estado
-        HTTP, `message` el texto del error y `error` el nombre corto del estado. El cliente de este servicio
+        HTTP, `message` el texto del error y `error` el nombre corto del estado. El campo `code` es aditivo
+        y opcional: los endpoints de escritura de Fase 2 lo añadiran a los errores de negocio para que el
+        agente distinga la causa (nombres propuestos en los PRs #87/#88 del backend, fusionados
+        2026-09-29: SLOT_TAKEN y PENDING_CAP_REACHED en el 409, INVALID_SLOT en el 400 y BOOKING_EXPIRED
+        en la cancelacion). El cliente de este servicio
         (BackendClient) mapea este cuerpo a BackendException/BackendUnavailableException y no lo propaga tal
         cual: responde a NestJS con su propio ProblemDetail (RFC 9457, ADR 0017). Nota: los errores de
         saaspa-IA hacia NestJS SI son RFC 9457 (ver chat-api.openapi.yaml).
@@ -255,6 +333,12 @@ components:
         statusCode: { type: integer }
         message: { type: string }
         error: { type: string }
+        code:
+          type: [string, 'null']
+          description: >-
+            Codigo de maquina del error de negocio (aditivo; presente cuando el backend lo emita, hoy
+            solo en los endpoints de escritura de Fase 2 cuando existan). Nombres propuestos:
+            SLOT_TAKEN, PENDING_CAP_REACHED, INVALID_SLOT, BOOKING_EXPIRED.
     Category:
       type: object
       properties:
@@ -311,29 +395,67 @@ components:
       required: [serviceId, startTime]
       properties:
         serviceId: { type: string }
-        startTime: { type: string, format: date-time }
-        payFull: { type: boolean, description: 'Pagar el total en lugar del abono, si el backend lo soporta' }
+        startTime: { type: string, format: date-time, description: 'Instante con offset explicito, tal como lo devolvio /availability (Slot.start); el backend rechaza timestamps sin offset y valida la pertenencia a la rejilla publicada para ese dia (pedido en AGENTS.md seccion 11)' }
+        payFull:
+          type: boolean
+          description: >-
+            RESERVADO, no soportado en v1: el backend lo ignora si llega (el campo es opcional y no
+            rompe; el abono se define en el inicio de pago, no en la creacion). Decision del diseno
+            fusionado de Fase 2 del backend (PR #88, 2026-09-29). No usarlo hasta que se soporte.
     Booking:
       type: object
       properties:
         id: { type: string, format: uuid }
-        status:
-          type: string
-          description: >-
-            IMPLEMENTADO en el backend (PR #77, fusionado el 2026-09-27 01:09 UTC; ADR 0011). Una cita en
-            PENDIENTE_PAGO deja de ocupar su franja cuando vence la ventana de pago
-            (`BOOKING_PAYMENT_TTL_MINUTES`, 30 min por defecto) y pasa a EXPIRADA: el barrido corre cada
-            5 min y una vez al arrancar, libera el lock de Redis y borra el evento de Calendar si existe.
-            Un pago tardio queda APROBADO y necesita decision manual, y `confirm`/`reschedule` rechazan una
-            cita EXPIRADA. La franja liberada vuelve a aparecer en `/availability` porque el filtro de
-            ocupacion es el mismo que usan la disponibilidad y las comprobaciones de solape. Un pago tardio
-            (H-01 del backend, PR #81) crea el estado PAGO_TARDE con `reviewRequired` (decision manual
-            pendiente), excluido del filtro de ocupacion.
-          enum: [PENDIENTE_PAGO, CONFIRMADA, CANCELADA, COMPLETADA, NO_ASISTIO, EXPIRADA, PAGO_TARDE]
+        status: { $ref: '#/components/schemas/BookingStatus' }
         serviceId: { type: string }
         startTime: { type: string, format: date-time }
         endTime: { type: string, format: date-time }
         paymentUrl:
           type: [string, 'null']
           format: uri
-          description: 'Deep-link de pago (Fase 2, pedido 5); hoy no existe en el backend'
+          description: >-
+            Deep-link de pago (Fase 2). Decision de la persona: opcion A, enlace firmado producido por el
+            backend al crear la cita, que apunta a una pagina publica del frontend que arranca el pago
+            desde la referencia (hoy no existe en el backend; pedido en AGENTS.md seccion 11).
+    BookingStatus:
+      type: string
+      description: >-
+        IMPLEMENTADO en el backend (PR #77, fusionado el 2026-09-27 01:09 UTC; ADR 0011; PAGO_TARDE en el
+        PR #81, H-01). Una cita en PENDIENTE_PAGO deja de ocupar su franja cuando vence la ventana de pago
+        (`BOOKING_PAYMENT_TTL_MINUTES`, 30 min por defecto) y pasa a EXPIRADA: el barrido corre cada 5 min
+        y una vez al arrancar, libera el lock de Redis y borra el evento de Calendar si existe. Un pago
+        tardio crea el estado PAGO_TARDE con `reviewRequired` (decision manual pendiente), excluido del
+        filtro de ocupacion, y `confirm`/`reschedule` rechazan una cita EXPIRADA. La franja liberada vuelve
+        a aparecer en `/availability` porque el filtro de ocupacion es el mismo que usan la disponibilidad
+        y las comprobaciones de solape.
+      enum: [PENDIENTE_PAGO, CONFIRMADA, CANCELADA, COMPLETADA, NO_ASISTIO, EXPIRADA, PAGO_TARDE]
+    MyBookings:
+      type: object
+      required: [timezone, bookings, hasMore]
+      description: >-
+        Citas de la clienta del turno (misCitas, Fase 2). La autoridad de la zona es el tenant (C-02) y el
+        backend calcula start/end con offset explicito igual que /availability. El sujeto sale del turn
+        token (ADR 0012), nunca de un parametro. Forma verificada contra el codigo fusionado del backend
+        (PR #87, 2026-09-29): exactamente timezone + bookings + hasMore.
+      properties:
+        timezone: { type: string, example: America/Bogota }
+        bookings:
+          type: array
+          items: { $ref: '#/components/schemas/MyBooking' }
+        hasMore:
+          type: boolean
+          description: >-
+            true si hay mas resultados mas alla de esta pagina (page*limit < total), para que la
+            herramienta pida la siguiente en vez de asumir que la lista esta completa.
+    MyBooking:
+      type: object
+      required: [id, serviceId, serviceName, price, start, end, status]
+      description: Lo minimo que el agente necesita para hablar de una cita de la clienta (sin contacto ni notas).
+      properties:
+        id: { type: string, format: uuid }
+        serviceId: { type: string }
+        serviceName: { type: string, description: Nombre del servicio tal como lo muestra el catalogo }
+        price: { type: number, description: 'COP; precio del servicio en el momento de la consulta' }
+        start: { type: string, format: date-time, description: 'Instante con offset explicito, p. ej. 2026-10-01T08:00:00-05:00' }
+        end: { type: string, format: date-time, example: '2026-10-01T08:50:00-05:00' }
+        status: { $ref: '#/components/schemas/BookingStatus' }
